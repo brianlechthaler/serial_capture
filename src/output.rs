@@ -1,0 +1,119 @@
+use chrono::{DateTime, SecondsFormat, Utc};
+use std::fs::OpenOptions;
+use std::io::{self, Write};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Record {
+    pub ts: DateTime<Utc>,
+    pub device: String,
+    pub data: String,
+}
+
+impl Record {
+    pub fn new(device: impl Into<String>, data: impl Into<String>) -> Self {
+        Self {
+            ts: Utc::now(),
+            device: device.into(),
+            data: data.into(),
+        }
+    }
+}
+
+pub fn format_text(record: &Record) -> String {
+    format!("{}\t{}\t{}", ts_string(record), record.device, record.data)
+}
+
+pub fn format_json(record: &Record) -> String {
+    serde_json::json!({
+        "ts": ts_string(record),
+        "device": record.device,
+        "data": record.data,
+    })
+    .to_string()
+}
+
+pub fn format_csv(record: &Record) -> String {
+    format!(
+        "{},{},{}",
+        csv_escape(&ts_string(record)),
+        csv_escape(&record.device),
+        csv_escape(&record.data)
+    )
+}
+
+pub const CSV_HEADER: &str = "ts,device,data";
+
+fn ts_string(record: &Record) -> String {
+    record.ts.to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+pub fn csv_escape(value: &str) -> String {
+    if value.contains(['"', ',', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+pub fn open_dest(path: &str) -> io::Result<Box<dyn Write + Send>> {
+    if path == "-" {
+        Ok(Box::new(io::stdout()))
+    } else {
+        Ok(Box::new(
+            OpenOptions::new().create(true).append(true).open(path)?,
+        ))
+    }
+}
+
+fn csv_needs_header(path: &str) -> bool {
+    if path == "-" {
+        return true;
+    }
+    match std::fs::metadata(path) {
+        Ok(meta) => meta.len() == 0,
+        Err(_) => true,
+    }
+}
+
+pub struct Outputs {
+    text: Option<Box<dyn Write + Send>>,
+    json: Option<Box<dyn Write + Send>>,
+    csv: Option<Box<dyn Write + Send>>,
+}
+
+impl Outputs {
+    pub fn open(text: Option<&str>, json: Option<&str>, csv: Option<&str>) -> io::Result<Self> {
+        let write_csv_header = csv.map(csv_needs_header).unwrap_or(false);
+        let mut outputs = Self {
+            text: text.map(open_dest).transpose()?,
+            json: json.map(open_dest).transpose()?,
+            csv: csv.map(open_dest).transpose()?,
+        };
+        if write_csv_header {
+            let writer = outputs.csv.as_mut().expect("csv output");
+            writeln!(writer, "{CSV_HEADER}")?;
+            writer.flush()?;
+        }
+        Ok(outputs)
+    }
+
+    pub fn emit(&mut self, record: &Record) -> io::Result<()> {
+        if let Some(writer) = &mut self.text {
+            writeln!(writer, "{}", format_text(record))?;
+            writer.flush()?;
+        }
+        if let Some(writer) = &mut self.json {
+            writeln!(writer, "{}", format_json(record))?;
+            writer.flush()?;
+        }
+        if let Some(writer) = &mut self.csv {
+            writeln!(writer, "{}", format_csv(record))?;
+            writer.flush()?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+#[path = "output_tests.rs"]
+mod output_tests;

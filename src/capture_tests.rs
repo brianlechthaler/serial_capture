@@ -1,0 +1,404 @@
+use crate::capture::*;
+use crate::config::Config;
+use crate::device::{Device, UsbInfo};
+use crate::output::Outputs;
+use std::collections::VecDeque;
+use std::io::{self, Cursor, Read};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
+
+struct Scripted(VecDeque<io::Result<Vec<u8>>>);
+
+impl Read for Scripted {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self.steps() {
+            None => Ok(0),
+            Some(Ok(data)) => {
+                let n = data.len().min(buf.len());
+                buf[..n].copy_from_slice(&data[..n]);
+                Ok(n)
+            }
+            Some(Err(err)) => Err(err),
+        }
+    }
+}
+
+impl Scripted {
+    fn steps(&mut self) -> Option<io::Result<Vec<u8>>> {
+        self.0.pop_front()
+    }
+}
+
+fn wait_until(stop: &AtomicBool, pred: impl Fn() -> bool) {
+    wait_until_for(stop, Duration::from_secs(3), pred);
+}
+
+fn wait_until_for(stop: &AtomicBool, limit: Duration, pred: impl Fn() -> bool) {
+    let start = Instant::now();
+    while !pred() {
+        if start.elapsed() > limit {
+            stop.store(true, Ordering::Relaxed);
+            panic!("timed out waiting for capture condition");
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+#[should_panic(expected = "timed out waiting for capture condition")]
+fn wait_until_times_out() {
+    let stop = AtomicBool::new(false);
+    wait_until_for(&stop, Duration::from_millis(1), || false);
+}
+
+#[test]
+fn scripted_read_returns_bytes() {
+    let outputs = Mutex::new(Outputs::open(None, None, None).unwrap());
+    let stop = AtomicBool::new(false);
+    let mut splitter = LineSplitter::default();
+    let mut reader = Scripted(VecDeque::from([Ok(b"hi\n".to_vec())]));
+    assert!(!capture_reader(
+        "/dev/ttyUSB0",
+        &mut reader,
+        &mut splitter,
+        &outputs,
+        &stop
+    ));
+}
+
+#[test]
+fn splitter_handles_lines_and_flush() {
+    let mut splitter = LineSplitter::default();
+    assert_eq!(splitter.push(b"hi\n"), vec!["hi".to_string()]);
+    assert_eq!(
+        splitter.push(b"a\r\nb\nc"),
+        vec!["a".to_string(), "b".to_string()]
+    );
+    assert_eq!(splitter.flush().as_deref(), Some("c"));
+    assert!(splitter.flush().is_none());
+    assert_eq!(splitter.push(b"\n"), vec!["".to_string()]);
+    assert!(splitter.push(b"partial").is_empty());
+    assert_eq!(splitter.flush().as_deref(), Some("partial"));
+}
+
+#[test]
+fn capture_reader_emits_and_reconnects_on_eof() {
+    let dir = std::env::temp_dir().join(format!("serial-capture-read-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("out.txt");
+    let outputs = Mutex::new(Outputs::open(Some(path.to_str().unwrap()), None, None).unwrap());
+    let stop = AtomicBool::new(false);
+    let mut splitter = LineSplitter::default();
+    let mut reader = Cursor::new(b"one\ntwo".to_vec());
+    assert!(!capture_reader(
+        "/dev/ttyUSB0",
+        &mut reader,
+        &mut splitter,
+        &outputs,
+        &stop
+    ));
+    drop(outputs);
+    let body = std::fs::read_to_string(&path).unwrap();
+    assert!(body.contains("one"));
+    assert!(body.contains("two"));
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn capture_reader_stop_and_timeouts() {
+    let outputs = Mutex::new(Outputs::open(None, None, None).unwrap());
+    let stop = AtomicBool::new(true);
+    let mut splitter = LineSplitter::default();
+    splitter.push(b"leftover");
+    let mut reader = Scripted(VecDeque::from([Ok(b"x".to_vec())]));
+    assert!(capture_reader(
+        "/dev/ttyUSB0",
+        &mut reader,
+        &mut splitter,
+        &outputs,
+        &stop
+    ));
+
+    let stop = AtomicBool::new(false);
+    let mut splitter = LineSplitter::default();
+    let mut reader = Scripted(VecDeque::from([
+        Err(io::Error::new(io::ErrorKind::TimedOut, "t")),
+        Err(io::Error::new(io::ErrorKind::WouldBlock, "w")),
+        Err(io::Error::other("boom")),
+    ]));
+    splitter.push(b"tail");
+    assert!(!capture_reader(
+        "/dev/ttyUSB0",
+        &mut reader,
+        &mut splitter,
+        &outputs,
+        &stop
+    ));
+}
+
+#[test]
+fn run_loop_reconnects_and_discovers() {
+    let dir = std::env::temp_dir().join(format!("serial-capture-loop-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("cap.txt");
+    let outputs = Arc::new(Mutex::new(
+        Outputs::open(Some(log.to_str().unwrap()), None, None).unwrap(),
+    ));
+    let stop = Arc::new(AtomicBool::new(false));
+    let opens = Arc::new(AtomicUsize::new(0));
+    let ticks = Arc::new(AtomicUsize::new(0));
+    let cfg = Config {
+        poll_ms: 1,
+        ..Config::default()
+    };
+    let lister_ticks = ticks.clone();
+    let opener_opens = opens.clone();
+    let thread_stop = stop.clone();
+    let handle = thread::spawn(move || {
+        run_loop(
+            &cfg,
+            move || {
+                if lister_ticks.load(Ordering::Relaxed) == 0 {
+                    Vec::new()
+                } else {
+                    vec![Device::from_path("/dev/ttyUSB0")]
+                }
+            },
+            move |_, _| {
+                opener_opens.fetch_add(1, Ordering::Relaxed);
+                Ok(Box::new(Cursor::new(b"hello\n".to_vec())) as Box<dyn Read + Send>)
+            },
+            outputs,
+            thread_stop,
+            {
+                let ticks = ticks.clone();
+                move |_| {
+                    ticks.fetch_add(1, Ordering::Relaxed);
+                }
+            },
+        );
+    });
+    wait_until(&stop, || opens.load(Ordering::Relaxed) >= 2);
+    stop.store(true, Ordering::Relaxed);
+    handle.join().unwrap();
+    let body = std::fs::read_to_string(&log).unwrap();
+    assert!(body.contains("hello"));
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn run_loop_specified_device_remaps_path() {
+    let dir = std::env::temp_dir().join(format!("serial-capture-map-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("cap.txt");
+    let outputs = Arc::new(Mutex::new(
+        Outputs::open(Some(log.to_str().unwrap()), None, None).unwrap(),
+    ));
+    let stop = Arc::new(AtomicBool::new(false));
+    let last_path = Arc::new(Mutex::new(String::new()));
+    let ticks = Arc::new(AtomicUsize::new(0));
+    let usb = UsbInfo {
+        vid: 1,
+        pid: 2,
+        serial: Some("SN".into()),
+        manufacturer: None,
+        product: None,
+    };
+    let cfg = Config {
+        device: vec!["/dev/ttyUSB0".into()],
+        poll_ms: 1,
+        ..Config::default()
+    };
+    let lister_ticks = ticks.clone();
+    let usb_first = usb.clone();
+    let usb_second = usb;
+    let seen = last_path.clone();
+    let thread_stop = stop.clone();
+    let handle = thread::spawn(move || {
+        run_loop(
+            &cfg,
+            move || {
+                if lister_ticks.load(Ordering::Relaxed) < 2 {
+                    vec![Device {
+                        path: "/dev/ttyUSB0".into(),
+                        usb: Some(usb_first.clone()),
+                    }]
+                } else {
+                    vec![Device {
+                        path: "/dev/ttyUSB1".into(),
+                        usb: Some(usb_second.clone()),
+                    }]
+                }
+            },
+            {
+                let seen = seen.clone();
+                move |path, _| {
+                    *seen.lock().unwrap() = path.to_string();
+                    Ok(Box::new(Cursor::new(b"x\n".to_vec())) as Box<dyn Read + Send>)
+                }
+            },
+            outputs,
+            thread_stop,
+            {
+                let ticks = ticks.clone();
+                move |_| {
+                    ticks.fetch_add(1, Ordering::Relaxed);
+                }
+            },
+        );
+    });
+    wait_until(&stop, || {
+        last_path.lock().unwrap().as_str() == "/dev/ttyUSB1"
+    });
+    stop.store(true, Ordering::Relaxed);
+    handle.join().unwrap();
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn run_loop_retries_open_errors() {
+    let outputs = Arc::new(Mutex::new(Outputs::open(None, None, None).unwrap()));
+    let stop = Arc::new(AtomicBool::new(false));
+    let opens = Arc::new(AtomicUsize::new(0));
+    let cfg = Config {
+        device: vec!["/dev/ttyUSB0".into()],
+        poll_ms: 1,
+        ..Config::default()
+    };
+    let opener_opens = opens.clone();
+    let thread_stop = stop.clone();
+    let handle = thread::spawn(move || {
+        run_loop(
+            &cfg,
+            Vec::new,
+            move |_, _| {
+                opener_opens.fetch_add(1, Ordering::Relaxed);
+                Err(io::Error::other("missing"))
+            },
+            outputs,
+            thread_stop,
+            |_| {},
+        );
+    });
+    wait_until(&stop, || opens.load(Ordering::Relaxed) >= 2);
+    stop.store(true, Ordering::Relaxed);
+    handle.join().unwrap();
+}
+
+#[test]
+fn open_serial_missing_path_fails() {
+    assert!(open_serial("/dev/ttyUSB-does-not-exist-xyz", 115200).is_err());
+}
+
+#[test]
+fn capture_reader_empty_flush_on_stop_eof_and_error() {
+    let outputs = Mutex::new(Outputs::open(None, None, None).unwrap());
+    let mut splitter = LineSplitter::default();
+    let stop = AtomicBool::new(true);
+    assert!(capture_reader(
+        "/dev/ttyUSB0",
+        &mut Cursor::new(Vec::<u8>::new()),
+        &mut splitter,
+        &outputs,
+        &stop
+    ));
+
+    let stop = AtomicBool::new(false);
+    assert!(!capture_reader(
+        "/dev/ttyUSB0",
+        &mut Cursor::new(Vec::<u8>::new()),
+        &mut splitter,
+        &outputs,
+        &stop
+    ));
+
+    let mut reader = Scripted(VecDeque::from([Err(io::Error::other("boom"))]));
+    assert!(!capture_reader(
+        "/dev/ttyUSB0",
+        &mut reader,
+        &mut splitter,
+        &outputs,
+        &stop
+    ));
+}
+
+#[test]
+fn emit_lines_survives_poisoned_mutex() {
+    let outputs = Arc::new(Mutex::new(Outputs::open(None, None, None).unwrap()));
+    let poisoned = outputs.clone();
+    let _ = thread::spawn(move || {
+        let _guard = poisoned.lock().unwrap();
+        panic!("poison");
+    })
+    .join();
+    emit_lines("/dev/ttyUSB0", ["x".into()], &outputs);
+}
+
+#[test]
+fn run_loop_skips_duplicate_keys() {
+    let outputs = Arc::new(Mutex::new(Outputs::open(None, None, None).unwrap()));
+    let stop = Arc::new(AtomicBool::new(false));
+    let ticks = Arc::new(AtomicUsize::new(0));
+    let cfg = Config {
+        device: vec!["/dev/ttyUSB0".into(), "/dev/ttyUSB0".into()],
+        poll_ms: 1,
+        ..Config::default()
+    };
+    let thread_stop = stop.clone();
+    let opens = ticks.clone();
+    let handle = thread::spawn(move || {
+        run_loop(
+            &cfg,
+            Vec::new,
+            {
+                let opens = opens.clone();
+                move |_, _| {
+                    opens.fetch_add(1, Ordering::Relaxed);
+                    Err(io::Error::other("missing"))
+                }
+            },
+            outputs,
+            thread_stop,
+            |_| {},
+        );
+    });
+    wait_until(&stop, || ticks.load(Ordering::Relaxed) >= 1);
+    stop.store(true, Ordering::Relaxed);
+    handle.join().unwrap();
+}
+
+#[test]
+fn emit_lines_ignores_write_errors() {
+    let outputs = Mutex::new(Outputs::open(Some("/dev/full"), None, None).unwrap());
+    let stop = AtomicBool::new(false);
+    let mut splitter = LineSplitter::default();
+    let mut reader = Cursor::new(b"line\n".to_vec());
+    assert!(!capture_reader(
+        "/dev/ttyUSB0",
+        &mut reader,
+        &mut splitter,
+        &outputs,
+        &stop
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn open_serial_pty_succeeds() {
+    unsafe {
+        let master = libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY);
+        assert!(master >= 0);
+        assert_eq!(libc::grantpt(master), 0);
+        assert_eq!(libc::unlockpt(master), 0);
+        let mut buf = [0 as libc::c_char; 64];
+        assert_eq!(libc::ptsname_r(master, buf.as_mut_ptr(), buf.len()), 0);
+        let name = std::ffi::CStr::from_ptr(buf.as_ptr().cast())
+            .to_string_lossy()
+            .into_owned();
+        let result = open_serial(&name, 115200);
+        libc::close(master);
+        result.expect("pty slave should open as a serial port");
+    }
+}
