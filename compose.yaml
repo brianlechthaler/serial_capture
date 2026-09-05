@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    privileged: true
+    volumes:
+      - /dev:/dev
+      - ./logs:/logs
+    command: ["--text", "/logs/capture.txt"]
+
+  test:
+    build:
+      context: .
+      target: build
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: ["cargo", "test", "--all-targets"]
