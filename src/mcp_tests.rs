@@ -586,11 +586,11 @@ fn audit_none_skips_file_and_full_write_fails() {
 struct Boom;
 
 impl Write for Boom {
-    fn write(&mut self, _: &[u8]) -> io::Result<usize> {
-        Err(io::Error::other("boom"))
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        Ok(buf.len())
     }
     fn flush(&mut self) -> io::Result<()> {
-        Ok(())
+        Err(io::Error::other("boom"))
     }
 }
 
