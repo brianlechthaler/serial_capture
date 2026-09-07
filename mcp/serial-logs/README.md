@@ -26,7 +26,7 @@ make mcp
 cargo run --bin serial-capture-mcp
 ```
 
-Cursor loads `.cursor/mcp.json`. Reload MCP after pulling this branch.
+Cursor `.cursor/mcp.json` launches that debug binary over stdio (`type: stdio`). Build it first (`cargo build --bin serial-capture-mcp`), then reload MCP. Existing chats do not pick up a newly attached server.
 
 Sandboxed compose (no network, read-only root, logs mounted `:ro`):
 

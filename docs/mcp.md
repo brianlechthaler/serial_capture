@@ -22,7 +22,7 @@ Unknown JSON fields are rejected. Responses are capped at 64 KiB. Device serial 
 make mcp
 ```
 
-Reload MCP in Cursor after checkout. Log tools need `SERIAL_CAPTURE_LOG_DIR` (defaults unset; Cursor config points at `./logs`).
+Cursor `.cursor/mcp.json` is stdio and launches `target/debug/serial-capture-mcp`. Build it first (`cargo build --bin serial-capture-mcp`), then reload MCP. Log tools need `SERIAL_CAPTURE_LOG_DIR` (defaults unset; Cursor config points at `./logs`).
 
 Compose sandbox (no Docker on some hosts; CI still builds the image):
 

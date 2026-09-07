@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "serial-capture-logs": {
-      "command": "cargo",
-      "args": ["run", "--quiet", "--bin", "serial-capture-mcp"],
+      "type": "stdio",
+      "command": "${workspaceFolder}/target/debug/serial-capture-mcp",
       "env": {
         "SERIAL_CAPTURE_LOG_DIR": "${workspaceFolder}/logs",
         "MCP_AUDIT_PATH": "${workspaceFolder}/logs/mcp-audit.jsonl",
