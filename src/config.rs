@@ -7,13 +7,17 @@ use clap::Parser;
     version
 )]
 pub struct Config {
-    /// Serial device path (repeatable). Omit to auto-discover USB serial devices.
+    /// Serial device path (repeatable). Required unless --all or --list.
     #[arg(short, long)]
     pub device: Vec<String>,
 
     /// Baud rate
     #[arg(short, long, default_value_t = 115_200)]
     pub baud: u32,
+
+    /// Capture every USB serial device. Required when --device is omitted.
+    #[arg(long)]
+    pub all: bool,
 
     /// Newline-delimited text log (`-` for stdout)
     #[arg(long)]
@@ -26,6 +30,10 @@ pub struct Config {
     /// CSV log (`-` for stdout)
     #[arg(long)]
     pub csv: Option<String>,
+
+    /// Parse serial lines as JSON values in --json output
+    #[arg(long)]
+    pub json_nested: bool,
 
     /// How often to scan for devices, in milliseconds
     #[arg(long, default_value_t = 500)]
@@ -41,14 +49,18 @@ impl Default for Config {
         Self {
             device: Vec::new(),
             baud: 115_200,
+            all: false,
             text: None,
             json: None,
             csv: None,
+            json_nested: false,
             poll_ms: 500,
             list: false,
         }
     }
 }
+
+pub const MIN_POLL_MS: u64 = 50;
 
 impl Config {
     pub fn with_output_defaults(mut self) -> Self {
@@ -59,7 +71,7 @@ impl Config {
     }
 
     pub fn poll_duration(&self) -> std::time::Duration {
-        std::time::Duration::from_millis(self.poll_ms.max(1))
+        std::time::Duration::from_millis(self.poll_ms.max(MIN_POLL_MS))
     }
 }
 

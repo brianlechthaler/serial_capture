@@ -5,9 +5,8 @@ CLI that dumps output from USB serial devices. Capture continues after a reset o
 ## Quick start
 
 ```bash
-cargo install --path .
 serial-capture --list
-serial-capture
+serial-capture --all
 ```
 
 On Linux, the capturing user typically needs membership in the `dialout` group. See [Getting started](docs/getting-started.md).
@@ -16,6 +15,7 @@ On Linux, the capturing user typically needs membership in the `dialout` group. 
 
 - [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
+- [Security audit](docs/security-audit.md)
 - [CLI](docs/features/cli.md)
 - [Device discovery](docs/features/device-discovery.md)
 - [Reconnect and identity](docs/features/reconnect.md)

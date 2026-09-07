@@ -9,6 +9,8 @@ use std::thread;
 use std::time::Duration;
 
 pub const READ_TIMEOUT: Duration = Duration::from_millis(100);
+pub const MAX_LINE: usize = 1_048_576;
+pub const MAX_CAPTURE_THREADS: usize = 32;
 
 #[derive(Default)]
 pub struct LineSplitter {
@@ -19,7 +21,15 @@ impl LineSplitter {
     pub fn push(&mut self, data: &[u8]) -> Vec<String> {
         self.buf.extend_from_slice(data);
         let mut lines = Vec::new();
-        while let Some(index) = self.buf.iter().position(|&b| b == b'\n') {
+        loop {
+            if self.buf.len() > MAX_LINE && !self.buf[..MAX_LINE].contains(&b'\n') {
+                let chunk: Vec<u8> = self.buf.drain(..MAX_LINE).collect();
+                lines.push(String::from_utf8_lossy(&chunk).into_owned());
+                continue;
+            }
+            let Some(index) = self.buf.iter().position(|&b| b == b'\n') else {
+                break;
+            };
             let mut line: Vec<u8> = self.buf.drain(..=index).collect();
             line.pop();
             if line.last() == Some(&b'\r') {
@@ -49,6 +59,10 @@ pub fn open_serial(path: &str, baud: u32) -> io::Result<Box<dyn Read + Send>> {
         .map_err(|err| io::Error::other(err.to_string()))
 }
 
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|err| err.into_inner())
+}
+
 pub(crate) fn emit_lines(
     path: &str,
     lines: impl IntoIterator<Item = String>,
@@ -56,7 +70,7 @@ pub(crate) fn emit_lines(
 ) {
     for data in lines {
         let record = Record::new(path, data);
-        let _ = outputs.lock().map(|mut out| out.emit(&record));
+        let _ = lock(outputs).emit(&record);
     }
 }
 
@@ -122,10 +136,13 @@ pub fn run_loop<L, O, S>(
     while !stop.load(Ordering::Relaxed) {
         let discovered = lister();
         let next = {
-            let mut registry = registry.lock().unwrap();
+            let mut registry = lock(&registry);
             targets(&selector, &discovered, &mut registry)
         };
         for target in next {
+            if spawned.len() >= MAX_CAPTURE_THREADS {
+                break;
+            }
             if spawned.insert(target.key.clone()) {
                 let opener = opener.clone();
                 let outputs = outputs.clone();
@@ -136,7 +153,7 @@ pub fn run_loop<L, O, S>(
                 handles.push(thread::spawn(move || {
                     let mut splitter = LineSplitter::default();
                     while !stop_thread.load(Ordering::Relaxed) {
-                        let path = registry.lock().unwrap().resolve(&key);
+                        let path = lock(&registry).resolve(&key);
                         match opener(&path, baud) {
                             Ok(mut reader) => {
                                 if capture_reader(

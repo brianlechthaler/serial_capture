@@ -1,16 +1,30 @@
 services:
   app:
     build: .
-    privileged: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    group_add:
+      - dialout
+    device_cgroup_rules:
+      - "c 166:* rwm"
+      - "c 188:* rwm"
+    mem_limit: 256m
+    pids_limit: 64
     volumes:
       - /dev:/dev
+      - /sys:/sys:ro
       - ./logs:/logs
-    command: ["--text", "/logs/capture.txt"]
+    command: ["--all", "--text", "/logs/capture.txt"]
 
   test:
     build:
       context: .
       target: build
+    user: "1000:1000"
+    mem_limit: 2g
+    pids_limit: 256
     volumes:
       - .:/workspace
     working_dir: /workspace

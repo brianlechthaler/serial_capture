@@ -6,3 +6,4 @@ logs/
 *.log
 /coverage
 lcov.info
+.env

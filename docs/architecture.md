@@ -30,8 +30,8 @@ flowchart TD
 
 1. Apply output defaults (`text=-` when no format is set and `--list` is off).
 2. Open log destinations (append; CSV header if the file is empty).
-3. Poll for devices every `--poll-ms` (minimum 1 ms).
-4. For each selected target that does not already have a thread, spawn one keyed by USB identity (auto mode) or by the requested path (explicit `--device`).
+3. Poll for devices every `--poll-ms` (minimum 50 ms).
+4. For each selected target that does not already have a thread, spawn one keyed by USB identity (auto/`--all` mode) or by the requested path (explicit `--device`), up to 32 threads.
 5. Each thread opens the current path from the registry, reads until EOF/error/stop, emits complete lines, then retries after `poll_ms`.
 
 Serial reads use a 100 ms timeout so the stop flag can be checked without blocking indefinitely.

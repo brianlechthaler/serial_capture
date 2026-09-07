@@ -13,7 +13,7 @@ pub mod output;
 
 pub use config::Config;
 pub use device::Device;
-pub use output::{format_csv, format_json, format_text, Record};
+pub use output::{csv_cell, format_csv, format_json, format_json_nested, format_text, Record};
 
 pub type AppResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -27,7 +27,15 @@ pub fn run_with(cfg: Config, stop: Arc<AtomicBool>) -> AppResult<()> {
         write_devices(&list_devices(), &mut io::stdout())?;
         return Ok(());
     }
-    let outputs = Outputs::open(cfg.text.as_deref(), cfg.json.as_deref(), cfg.csv.as_deref())?;
+    if cfg.device.is_empty() && !cfg.all {
+        return Err("specify --device PATH or --all to capture USB serial devices".into());
+    }
+    let outputs = Outputs::open_with_json(
+        cfg.text.as_deref(),
+        cfg.json.as_deref(),
+        cfg.csv.as_deref(),
+        cfg.json_nested,
+    )?;
     run_loop(
         &cfg,
         list_devices,

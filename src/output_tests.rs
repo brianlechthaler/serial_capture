@@ -28,19 +28,29 @@ fn formats_text_json_csv() {
 }
 
 #[test]
-fn json_nests_parsed_payload() {
+fn json_keeps_payload_as_string() {
     let record = Record {
         data: r#"{"event":"config","beep_mask":31}"#.into(),
         ..rec()
     };
     let value: serde_json::Value = serde_json::from_str(&format_json(&record)).unwrap();
+    assert_eq!(value["data"], r#"{"event":"config","beep_mask":31}"#);
+}
+
+#[test]
+fn json_nested_parses_payload() {
+    let record = Record {
+        data: r#"{"event":"config","beep_mask":31}"#.into(),
+        ..rec()
+    };
+    let value: serde_json::Value = serde_json::from_str(&format_json_nested(&record)).unwrap();
     assert_eq!(value["data"]["event"], "config");
     assert_eq!(value["data"]["beep_mask"], 31);
     let text = Record {
         data: "LED on".into(),
         ..rec()
     };
-    let value: serde_json::Value = serde_json::from_str(&format_json(&text)).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&format_json_nested(&text)).unwrap();
     assert_eq!(value["data"], "LED on");
 }
 
@@ -56,6 +66,53 @@ fn csv_escapes_specials() {
         ..rec()
     };
     assert!(format_csv(&record).contains("\"x,y\""));
+}
+
+#[test]
+fn csv_neutralizes_formula_prefix() {
+    assert_eq!(csv_cell("=cmd"), "'=cmd");
+    assert_eq!(csv_cell("+1+1"), "'+1+1");
+    assert_eq!(csv_cell("-1"), "'-1");
+    assert_eq!(csv_cell("@SUM(A1)"), "'@SUM(A1)");
+    assert_eq!(csv_cell("hello"), "hello");
+    let record = Record {
+        data: "=2+2".into(),
+        ..rec()
+    };
+    assert!(format_csv(&record).ends_with("'=2+2"));
+}
+
+#[test]
+fn emit_json_nested_parses_objects() {
+    let dir = std::env::temp_dir().join(format!("serial-capture-jsonn-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let json = dir.join("j.json");
+    let mut outputs =
+        Outputs::open_with_json(None, Some(json.to_str().unwrap()), None, true).unwrap();
+    outputs
+        .emit(&Record {
+            data: r#"{"k":1}"#.into(),
+            ..rec()
+        })
+        .unwrap();
+    drop(outputs);
+    let body = fs::read_to_string(&json).unwrap();
+    let value: serde_json::Value = serde_json::from_str(body.trim()).unwrap();
+    assert_eq!(value["data"]["k"], 1);
+    fs::remove_dir_all(&dir).ok();
+}
+
+#[cfg(unix)]
+#[test]
+fn log_file_mode_is_owner_rw_only() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("serial-capture-mode-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("secret.txt");
+    drop(open_dest(path.to_str().unwrap()).unwrap());
+    let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+    fs::remove_dir_all(&dir).ok();
+    assert_eq!(mode, 0o600);
 }
 
 #[test]

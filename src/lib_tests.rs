@@ -1,6 +1,11 @@
 use super::*;
 
 #[test]
+fn run_requires_device_or_all() {
+    assert!(run(Config::default()).is_err());
+}
+
+#[test]
 fn run_list_succeeds() {
     let cfg = Config {
         list: true,
@@ -13,6 +18,7 @@ fn run_list_succeeds() {
 fn run_missing_output_dir_fails() {
     let cfg = Config {
         text: Some("/no/such/serial-capture-dir/out.txt".into()),
+        all: true,
         ..Config::default()
     };
     assert!(run(cfg).is_err());
