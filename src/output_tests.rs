@@ -28,6 +28,23 @@ fn formats_text_json_csv() {
 }
 
 #[test]
+fn json_nests_parsed_payload() {
+    let record = Record {
+        data: r#"{"event":"config","beep_mask":31}"#.into(),
+        ..rec()
+    };
+    let value: serde_json::Value = serde_json::from_str(&format_json(&record)).unwrap();
+    assert_eq!(value["data"]["event"], "config");
+    assert_eq!(value["data"]["beep_mask"], 31);
+    let text = Record {
+        data: "LED on".into(),
+        ..rec()
+    };
+    let value: serde_json::Value = serde_json::from_str(&format_json(&text)).unwrap();
+    assert_eq!(value["data"], "LED on");
+}
+
+#[test]
 fn csv_escapes_specials() {
     assert_eq!(csv_escape("plain"), "plain");
     assert_eq!(csv_escape("a,b"), "\"a,b\"");
