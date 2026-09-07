@@ -1,0 +1,66 @@
+# Log formats
+
+Write captured lines as text, JSON, and/or CSV. Any combination can be enabled at once.
+
+## Overview
+
+Each complete line becomes a `Record`: UTC timestamp (RFC 3339 with milliseconds), device path at emit time, and line text. Destinations are opened once at startup. Files use create + append so reconnects do not truncate previous output.
+
+Use `-` as a path to write that format to stdout. Multiple formats to stdout interleave on the same stream.
+
+If no format flag is set (and `--list` is off), text to stdout is implied.
+
+## Text
+
+Tab-separated: timestamp, device, data.
+
+```text
+2023-11-14T22:13:20.123Z	/dev/ttyUSB0	hello
+```
+
+## JSON
+
+One JSON object per line:
+
+```json
+{"data":"hello","device":"/dev/ttyUSB0","ts":"2023-11-14T22:13:20.123Z"}
+```
+
+If the line is valid JSON, `data` is that value (object, array, number, and so on). Otherwise `data` is a JSON string.
+
+```json
+{"data":{"event":"config","beep_mask":31},"device":"/dev/ttyUSB0","ts":"2023-11-14T22:13:20.123Z"}
+```
+
+## CSV
+
+Header `ts,device,data` is written when the destination is stdout, the file does not exist, or the file is empty. An existing non-empty file is appended without a second header.
+
+Fields are RFC 4180-style escaped when they contain `"`, `,`, `\n`, or `\r` (quotes doubled, field wrapped in `"`).
+
+```csv
+ts,device,data
+2023-11-14T22:13:20.123Z,/dev/ttyUSB0,hello
+```
+
+## Usage
+
+```bash
+serial-capture --text capture.txt --json capture.json --csv capture.csv
+serial-capture --json -
+```
+
+Each emit flushes the writer so lines show up immediately.
+
+## Troubleshooting
+
+| Symptom | Cause |
+|---------|--------|
+| Process exits immediately with a path error | Parent directory of a log file does not exist. |
+| CSV has two header rows | Unlikely unless the previous file ended empty or was truncated to zero. Header is written only for empty/new files and stdout. |
+| JSON `data` is a string, not an object | The serial line was not valid JSON. |
+
+## Related
+
+- [CLI](cli.md)
+- [Reconnect and identity](reconnect.md)
