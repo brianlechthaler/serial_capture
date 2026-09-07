@@ -24,10 +24,12 @@ pub fn format_text(record: &Record) -> String {
 }
 
 pub fn format_json(record: &Record) -> String {
+    let data = serde_json::from_str(&record.data)
+        .unwrap_or_else(|_| serde_json::Value::String(record.data.clone()));
     serde_json::json!({
         "ts": ts_string(record),
         "device": record.device,
-        "data": record.data,
+        "data": data,
     })
     .to_string()
 }
