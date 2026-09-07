@@ -7,7 +7,7 @@ fn bin() -> Command {
 #[test]
 fn list_exits_zero() {
     let output = bin().arg("--list").output().unwrap();
-    assert!(output.status.success(), "{:?}", output);
+    assert!(output.status.success(), "{output:?}");
 }
 
 #[test]
