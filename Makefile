@@ -1,4 +1,4 @@
-.PHONY: test lint coverage fmt
+.PHONY: test lint coverage fmt mcp
 
 test:
 	cargo test --all-targets
@@ -12,3 +12,6 @@ fmt:
 
 coverage:
 	cargo llvm-cov --all-targets --fail-under-functions 100 --fail-under-lines 99
+
+mcp:
+	cargo run --quiet --bin serial-capture-mcp

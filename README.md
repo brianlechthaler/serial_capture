@@ -16,6 +16,7 @@ On Linux, the capturing user typically needs membership in the `dialout` group. 
 - [Getting started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
 - [Security audit](docs/security-audit.md)
+- [MCP](docs/mcp.md)
 - [CLI](docs/features/cli.md)
 - [Device discovery](docs/features/device-discovery.md)
 - [Reconnect and identity](docs/features/reconnect.md)

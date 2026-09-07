@@ -1,6 +1,6 @@
 # Architecture
 
-`serial-capture` is a Rust CLI. `main` parses flags into `Config` and calls `serial_capture::run`. Capture work lives in library modules so tests can inject listers, openers, and a stop flag.
+`serial-capture` is a Rust CLI. `main` parses flags into `Config` and calls `serial_capture::run`. Capture work lives in library modules so tests can inject listers, openers, and a stop flag. Agents talk to a separate stdio binary `serial-capture-mcp` (see [MCP](mcp.md)).
 
 ## Modules
 
@@ -10,6 +10,7 @@
 | `device` | USB tty scan, identity, selector, path registry |
 | `capture` | Poll loop, per-device threads, line split, serial open |
 | `output` | Text / JSON / CSV writers |
+| `mcp` | Read-only JSON-RPC stdio server for log/device tools |
 
 ```mermaid
 flowchart TD
@@ -24,6 +25,8 @@ flowchart TD
   Port --> Split[LineSplitter]
   Split --> Rec[Record]
   Rec --> Out
+  MCP[serial-capture-mcp] --> List
+  MCP --> Logs[allowlisted log dir]
 ```
 
 ## Runtime
@@ -38,6 +41,7 @@ Serial reads use a 100 ms timeout so the stop flag can be checked without blocki
 
 ## Related
 
+- [MCP](mcp.md)
 - [Reconnect and identity](features/reconnect.md)
 - [Log formats](features/log-formats.md)
 - [CLI](features/cli.md)

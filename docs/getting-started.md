@@ -71,6 +71,7 @@ serial-capture \
 make test
 make lint
 make coverage
+make mcp
 ```
 
 Coverage requires `cargo-llvm-cov`. Thresholds are 100% functions and 99% lines.
@@ -78,5 +79,6 @@ Coverage requires `cargo-llvm-cov`. Thresholds are 100% functions and 99% lines.
 ## Related
 
 - [CLI flags](features/cli.md)
+- [MCP](mcp.md)
 - [Device discovery](features/device-discovery.md)
 - [Docker](features/docker.md)
