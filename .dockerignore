@@ -4,4 +4,5 @@ target
 logs
 *.log
 .dockerignore
-README.md
+docs
+*.md
