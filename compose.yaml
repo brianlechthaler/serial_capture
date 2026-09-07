@@ -18,6 +18,27 @@ services:
       - ./logs:/logs
     command: ["--all", "--text", "/logs/capture.txt"]
 
+  mcp:
+    build: .
+    entrypoint: ["serial-capture-mcp"]
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    pids_limit: 32
+    network_mode: none
+    stdin_open: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    volumes:
+      - ./logs:/logs:ro
+    environment:
+      SERIAL_CAPTURE_LOG_DIR: /logs
+      MCP_AUDIT_PATH: /tmp/mcp-audit.jsonl
+      MCP_CALLER_IDENTITY: agent:cursor-host
+
   test:
     build:
       context: .

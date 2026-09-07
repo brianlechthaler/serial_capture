@@ -4,7 +4,7 @@
 **Scope:** full repository (not a diff-only review)
 **Mode:** findings below were patched in this branch; Trivy Dockerfile misconfig count is now 0
 
-This is a local Rust CLI that opens USB serial ports and appends captured lines to text/JSON/CSV files or stdout. There is no HTTP server, no authentication, and no MCP surface.
+This is a local Rust CLI that opens USB serial ports and appends captured lines to text/JSON/CSV files or stdout. There is no HTTP server. Agents use a read-only stdio MCP server (`serial-capture-mcp`); see [MCP](mcp.md).
 
 ## Remediation status
 
@@ -52,11 +52,11 @@ Top 3 risks:
 | Area | What exists |
 |------|-------------|
 | Languages | Rust 2021 (`serial-capture` 0.1.0) |
-| Entry points | CLI (`Config` / clap), optional Docker/Compose, GitHub Actions (test, lint, container/GHCR) |
-| Auth | None (local process, operator identity) |
+| Entry points | CLI (`Config` / clap), MCP stdio (`serial-capture-mcp`), optional Docker/Compose, GitHub Actions (test, lint, container/GHCR) |
+| Auth | None on the CLI (local process). MCP: optional gateway token + per-tool scopes |
 | Data | USB serial payloads, USB VID/PID/serial strings, log files |
 | Trust boundary | Operator argv → process → `/dev` tty + log paths; USB device → capture threads → logs |
-| Out of scope as absent | HTTP, WebSockets, cookies, CORS, SSRF, SQL, MCP, Terraform, Kubernetes |
+| Out of scope as absent | HTTP, WebSockets, cookies, CORS, SSRF, SQL, Terraform, Kubernetes |
 
 ## Scanner results
 
@@ -282,7 +282,7 @@ Lockfile is committed and CI uses `cargo build --release --locked`. There is no 
 | 4 API/web | N/A (no HTTP) |
 | 5 Infra/CI | Privileged Compose, root image, unpinned actions = SEC-001, SEC-002, SEC-005, SEC-012. No `pull_request_target` |
 | 6 Data/privacy | Logs may hold device secrets; default umask = SEC-008; auto-capture = SEC-006 |
-| 7 MCP | N/A (no MCP server) |
+| 7 MCP | Read-only `serial-capture-mcp`; path allowlist, audit JSONL, compose sandbox. See [mcp.md](mcp.md) |
 | 8 Hardening | HEALTHCHECK N/A-ish = SEC-013; no rate limits (CLI) |
 
 ## Residual risk if all High/Medium items are fixed

@@ -9,6 +9,7 @@ use std::thread;
 pub mod capture;
 pub mod config;
 pub mod device;
+pub mod mcp;
 pub mod output;
 
 pub use config::Config;

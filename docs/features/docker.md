@@ -15,6 +15,7 @@ Host `/dev` must be visible inside the container for USB serial devices. Compose
 | Service | Purpose |
 |---------|---------|
 | `app` | Non-root run with USB cgroup rules, `/dev` and `/sys` mounted, `./logs` at `/logs`. Default command: `--all --text /logs/capture.txt`. Memory 256m, 64 PIDs. |
+| `mcp` | Same image, entrypoint `serial-capture-mcp`. No network, read-only root, `./logs` mounted `:ro`. Stdio only. |
 | `test` | Build stage image as uid 1000, `cargo test --all-targets` with the repo bind-mounted. |
 
 ```bash
@@ -33,3 +34,4 @@ CI (`.github/workflows/container.yml`) builds `linux/amd64` and `linux/arm64` an
 
 - [Getting started](../getting-started.md)
 - [CLI](cli.md)
+- [MCP](../mcp.md)
