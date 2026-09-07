@@ -2,7 +2,7 @@ use crate::capture::*;
 use crate::config::Config;
 use crate::device::{Device, UsbInfo};
 use crate::output::Outputs;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::io::{self, Cursor, Read};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -66,6 +66,18 @@ fn scripted_read_returns_bytes() {
         &outputs,
         &stop
     ));
+}
+
+#[test]
+fn splitter_caps_line_without_newline() {
+    let mut splitter = LineSplitter::default();
+    let mut data = vec![b'x'; MAX_LINE + 8];
+    data[MAX_LINE + 2] = b'y';
+    let lines = splitter.push(&data);
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].len(), MAX_LINE);
+    assert!(lines[0].chars().all(|c| c == 'x'));
+    assert_eq!(splitter.flush().as_deref(), Some("xxyxxxxx"));
 }
 
 #[test]
@@ -322,6 +334,54 @@ fn capture_reader_empty_flush_on_stop_eof_and_error() {
         &outputs,
         &stop
     ));
+}
+
+#[test]
+fn lock_recovers_poisoned_mutex() {
+    let mutex = std::sync::Mutex::new(7);
+    let poisoned = std::sync::Arc::new(mutex);
+    let clone = poisoned.clone();
+    let _ = thread::spawn(move || {
+        let _guard = clone.lock().unwrap();
+        panic!("poison");
+    })
+    .join();
+    assert_eq!(*lock(poisoned.as_ref()), 7);
+}
+
+#[test]
+fn run_loop_caps_capture_threads() {
+    let outputs = Arc::new(Mutex::new(Outputs::open(None, None, None).unwrap()));
+    let stop = Arc::new(AtomicBool::new(false));
+    let seen = Arc::new(Mutex::new(HashSet::new()));
+    let cfg = Config {
+        poll_ms: 1,
+        ..Config::default()
+    };
+    let opener_seen = seen.clone();
+    let thread_stop = stop.clone();
+    let handle = thread::spawn(move || {
+        run_loop(
+            &cfg,
+            || {
+                (0..=MAX_CAPTURE_THREADS)
+                    .map(|i| Device::from_path(format!("/dev/ttyUSB{i}")))
+                    .collect()
+            },
+            move |path, _| {
+                opener_seen.lock().unwrap().insert(path.to_string());
+                Err(io::Error::other("missing"))
+            },
+            outputs,
+            thread_stop,
+            |_| {},
+        );
+    });
+    wait_until(&stop, || seen.lock().unwrap().len() >= MAX_CAPTURE_THREADS);
+    thread::sleep(Duration::from_millis(30));
+    stop.store(true, Ordering::Relaxed);
+    handle.join().unwrap();
+    assert_eq!(seen.lock().unwrap().len(), MAX_CAPTURE_THREADS);
 }
 
 #[test]

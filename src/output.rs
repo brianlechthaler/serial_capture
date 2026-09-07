@@ -2,6 +2,9 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Record {
     pub ts: DateTime<Utc>,
@@ -24,8 +27,20 @@ pub fn format_text(record: &Record) -> String {
 }
 
 pub fn format_json(record: &Record) -> String {
-    let data = serde_json::from_str(&record.data)
-        .unwrap_or_else(|_| serde_json::Value::String(record.data.clone()));
+    json_line(record, false)
+}
+
+pub fn format_json_nested(record: &Record) -> String {
+    json_line(record, true)
+}
+
+fn json_line(record: &Record, nested: bool) -> String {
+    let data = if nested {
+        serde_json::from_str(&record.data)
+            .unwrap_or_else(|_| serde_json::Value::String(record.data.clone()))
+    } else {
+        serde_json::Value::String(record.data.clone())
+    };
     serde_json::json!({
         "ts": ts_string(record),
         "device": record.device,
@@ -37,9 +52,9 @@ pub fn format_json(record: &Record) -> String {
 pub fn format_csv(record: &Record) -> String {
     format!(
         "{},{},{}",
-        csv_escape(&ts_string(record)),
-        csv_escape(&record.device),
-        csv_escape(&record.data)
+        csv_cell(&ts_string(record)),
+        csv_cell(&record.device),
+        csv_cell(&record.data)
     )
 }
 
@@ -57,13 +72,24 @@ pub fn csv_escape(value: &str) -> String {
     }
 }
 
+pub fn csv_cell(value: &str) -> String {
+    let value = if value.starts_with(['=', '+', '-', '@', '\t', '\r']) {
+        format!("'{value}")
+    } else {
+        value.to_string()
+    };
+    csv_escape(&value)
+}
+
 pub fn open_dest(path: &str) -> io::Result<Box<dyn Write + Send>> {
     if path == "-" {
         Ok(Box::new(io::stdout()))
     } else {
-        Ok(Box::new(
-            OpenOptions::new().create(true).append(true).open(path)?,
-        ))
+        let mut opts = OpenOptions::new();
+        opts.create(true).append(true);
+        #[cfg(unix)]
+        opts.mode(0o600);
+        Ok(Box::new(opts.open(path)?))
     }
 }
 
@@ -81,15 +107,26 @@ pub struct Outputs {
     text: Option<Box<dyn Write + Send>>,
     json: Option<Box<dyn Write + Send>>,
     csv: Option<Box<dyn Write + Send>>,
+    json_nested: bool,
 }
 
 impl Outputs {
     pub fn open(text: Option<&str>, json: Option<&str>, csv: Option<&str>) -> io::Result<Self> {
+        Self::open_with_json(text, json, csv, false)
+    }
+
+    pub fn open_with_json(
+        text: Option<&str>,
+        json: Option<&str>,
+        csv: Option<&str>,
+        json_nested: bool,
+    ) -> io::Result<Self> {
         let write_csv_header = csv.map(csv_needs_header).unwrap_or(false);
         let mut outputs = Self {
             text: text.map(open_dest).transpose()?,
             json: json.map(open_dest).transpose()?,
             csv: csv.map(open_dest).transpose()?,
+            json_nested,
         };
         if write_csv_header {
             let writer = outputs.csv.as_mut().expect("csv output");
@@ -105,7 +142,12 @@ impl Outputs {
             writer.flush()?;
         }
         if let Some(writer) = &mut self.json {
-            writeln!(writer, "{}", format_json(record))?;
+            let line = if self.json_nested {
+                format_json_nested(record)
+            } else {
+                format_json(record)
+            };
+            writeln!(writer, "{line}")?;
             writer.flush()?;
         }
         if let Some(writer) = &mut self.csv {

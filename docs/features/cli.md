@@ -18,17 +18,19 @@ serial-capture [OPTIONS]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `-d`, `--device <PATH>` | all USB serial ports | Repeatable. Omit for auto-discovery. |
+| `-d`, `--device <PATH>` | (none) | Repeatable. Required unless `--all` or `--list`. |
+| `--all` | off | Capture every USB serial port. |
 | `-b`, `--baud <RATE>` | `115200` | Serial baud rate. |
 | `--text <PATH>` | `-` if no format is set | Newline-delimited text log. `-` is stdout. |
 | `--json <PATH>` | unset | Newline-delimited JSON log. `-` is stdout. |
-| `--csv <PATH>` | unset | CSV log. `-` is stdout. |
-| `--poll-ms <MS>` | `500` | Device scan and reconnect retry interval. Values below 1 are treated as 1. |
+| `--json-nested` | off | Parse serial lines as JSON values inside `--json` `data`. Default keeps `data` as a string. |
+| `--csv <PATH>` | unset | CSV log. `-` is stdout. Formula-like fields (`=`, `+`, `-`, `@`) are prefixed with `'`. |
+| `--poll-ms <MS>` | `500` | Device scan and reconnect retry interval. Values below 50 are treated as 50. |
 | `--list` | off | Print USB serial devices and exit. Does not open ports or logs. |
 
-If `--list` is off and none of `--text`, `--json`, or `--csv` is set, `--text -` is implied.
+If `--list` is off, pass `--device` (repeatable) or `--all`. Omitting both is an error. `--all` captures every matching USB serial port, including ones that appear later, up to 32 concurrent devices.
 
-Log files are opened with create + append. Parent directories must already exist; a missing directory fails before the capture loop starts.
+Log files are opened with create + append and Unix mode `0600`. Parent directories must already exist; a missing directory fails before the capture loop starts.
 
 ## Examples
 
@@ -41,7 +43,7 @@ serial-capture --list
 Stdout text for every USB serial port:
 
 ```bash
-serial-capture
+serial-capture --all
 ```
 
 Two explicit devices, JSON only, faster rescan:

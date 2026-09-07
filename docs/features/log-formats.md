@@ -26,7 +26,7 @@ One JSON object per line:
 {"data":"hello","device":"/dev/ttyUSB0","ts":"2023-11-14T22:13:20.123Z"}
 ```
 
-If the line is valid JSON, `data` is that value (object, array, number, and so on). Otherwise `data` is a JSON string.
+If the line is valid JSON **and** `--json-nested` is set, `data` is that value (object, array, number, and so on). Otherwise `data` is a JSON string.
 
 ```json
 {"data":{"event":"config","beep_mask":31},"device":"/dev/ttyUSB0","ts":"2023-11-14T22:13:20.123Z"}
@@ -36,7 +36,7 @@ If the line is valid JSON, `data` is that value (object, array, number, and so o
 
 Header `ts,device,data` is written when the destination is stdout, the file does not exist, or the file is empty. An existing non-empty file is appended without a second header.
 
-Fields are RFC 4180-style escaped when they contain `"`, `,`, `\n`, or `\r` (quotes doubled, field wrapped in `"`).
+Fields are RFC 4180-style escaped when they contain `"`, `,`, `\n`, or `\r` (quotes doubled, field wrapped in `"`). Values that start with `=`, `+`, `-`, `@`, tab, or CR get a leading `'` so spreadsheets do not treat them as formulas.
 
 ```csv
 ts,device,data
@@ -48,6 +48,7 @@ ts,device,data
 ```bash
 serial-capture --text capture.txt --json capture.json --csv capture.csv
 serial-capture --json -
+serial-capture --json - --json-nested
 ```
 
 Each emit flushes the writer so lines show up immediately.
@@ -58,7 +59,7 @@ Each emit flushes the writer so lines show up immediately.
 |---------|--------|
 | Process exits immediately with a path error | Parent directory of a log file does not exist. |
 | CSV has two header rows | Unlikely unless the previous file ended empty or was truncated to zero. Header is written only for empty/new files and stdout. |
-| JSON `data` is a string, not an object | The serial line was not valid JSON. |
+| JSON `data` is a string, not an object | The serial line was not valid JSON, or `--json-nested` was omitted. |
 
 ## Related
 

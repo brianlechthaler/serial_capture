@@ -19,9 +19,17 @@ fn help_exits_zero() {
 }
 
 #[test]
+fn missing_device_or_all_fails() {
+    let output = bin().output().unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("--device") || stderr.contains("--all"));
+}
+
+#[test]
 fn missing_log_dir_fails() {
     let output = bin()
-        .args(["--text", "/this/dir/does/not/exist/capture.log"])
+        .args(["--all", "--text", "/this/dir/does/not/exist/capture.log"])
         .output()
         .unwrap();
     assert!(!output.status.success());

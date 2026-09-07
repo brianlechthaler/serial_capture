@@ -37,6 +37,8 @@ fn parse_all_flags() {
     assert_eq!(cfg.csv.as_deref(), Some("out.csv"));
     assert_eq!(cfg.poll_ms, 250);
     assert!(cfg.list);
+    assert!(!cfg.all);
+    assert!(!cfg.json_nested);
 }
 
 #[test]
@@ -74,7 +76,17 @@ fn poll_duration_clamps_zero() {
         poll_ms: 0,
         ..Config::default()
     };
-    assert_eq!(cfg.poll_duration(), std::time::Duration::from_millis(1));
+    assert_eq!(
+        cfg.poll_duration(),
+        std::time::Duration::from_millis(MIN_POLL_MS)
+    );
+}
+
+#[test]
+fn parse_all_and_json_nested() {
+    let cfg = Config::parse_from(["serial-capture", "--all", "--json-nested"]);
+    assert!(cfg.all);
+    assert!(cfg.json_nested);
 }
 
 #[test]

@@ -47,7 +47,7 @@ Example line:
 Capture every matching USB serial port and print newline-delimited text to stdout:
 
 ```bash
-serial-capture
+serial-capture --all
 ```
 
 If `--text`, `--json`, and `--csv` are all omitted, the tool writes text to stdout (`-`).
@@ -63,7 +63,7 @@ serial-capture \
   --csv capture.csv
 ```
 
-`--device` can be repeated. Omit it to auto-discover ports and pick up new ones as they appear.
+`--device` can be repeated. Use `--all` (no `--device`) to capture every matching port, including ones that appear later.
 
 ## Development
 

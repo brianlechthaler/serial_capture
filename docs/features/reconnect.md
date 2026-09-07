@@ -18,7 +18,7 @@ Identity is:
 
 ## Auto mode (no `--device`)
 
-Every discovered USB serial device is a target. The thread key is `device.id()`, so the same USB identity keeps one thread even if the tty path changes. A new identity (another adapter plugged in) starts a new thread.
+Every discovered USB serial device is a target (CLI `--all`). The thread key is `device.id()`, so the same USB identity keeps one thread even if the tty path changes. A new identity (another adapter plugged in) starts a new thread, up to 32.
 
 ## Explicit `--device`
 

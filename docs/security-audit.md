@@ -1,14 +1,43 @@
 # Security audit — serial-capture
 
 **Date:** 2026-09-06
-**Scope:** full repository at `31ceaf5` (`main`), not a diff-only review
-**Mode:** report only (no code changes in this document)
+**Scope:** full repository (not a diff-only review)
+**Mode:** findings below were patched in this branch; Trivy Dockerfile misconfig count is now 0
 
-This is a local Rust CLI that opens USB serial ports and appends captured lines to text/JSON/CSV files or stdout. There is no HTTP server, no authentication, and no MCP surface. The realistic attackers are a malicious USB gadget, a compromised CI action, or anyone who runs the published Compose file.
+This is a local Rust CLI that opens USB serial ports and appends captured lines to text/JSON/CSV files or stdout. There is no HTTP server, no authentication, and no MCP surface.
 
-## Executive summary
+## Remediation status
+
+All 15 findings were fixed on this branch:
+
+| ID | Was | Fix |
+|----|-----|-----|
+| SEC-001 | High | Compose: no `privileged`; `cap_drop: ALL`, `no-new-privileges`, USB cgroup majors 166/188 |
+| SEC-002 | High | Dockerfile `USER capture` (uid 65532, group `dialout`) |
+| SEC-003 | Medium | `LineSplitter` caps at 1 MiB |
+| SEC-004 | Medium | CSV formula prefixes get a leading `'` |
+| SEC-005 | Medium | Actions pinned to commit SHAs; CI toolchain `1.88.0` |
+| SEC-006 | Medium | Capture requires `--device` or `--all` |
+| SEC-007 | Medium | Base images pinned by digest |
+| SEC-008 | Low | Unix log files `0600` |
+| SEC-009 | Low | `.gitignore` includes `.env` |
+| SEC-010 | Low | Poll floor 50 ms; max 32 capture threads |
+| SEC-011 | Low | JSON `data` is a string unless `--json-nested` |
+| SEC-012 | Low | Compose mem/PID limits; test service uid 1000 |
+| SEC-013 | Info | `HEALTHCHECK CMD kill -0 1` |
+| SEC-014 | Info | `audit.yml` (`cargo audit`) + Dependabot |
+| SEC-015 | Info | Mutex poison recovered with `into_inner()` |
+
+**Re-scan:** Trivy config on `Dockerfile` — 0 misconfigurations (was DS-0002 High, DS-0026 Low). Tests 63, coverage 100% functions / 99.60% lines.
+
+Residual risk: the operator can still point `--text` / `--device` at any path they can open. That is the CLI trust model.
+
+The original finding write-ups follow.
+
+## Executive summary (as found)
 
 **15 findings (0 critical, 2 high, 5 medium, 5 low, 3 informational).**
+
 
 No production secrets, no known crate CVEs, and no remote unauthenticated RCE. The two high issues are on the Docker path: Compose runs the app `--privileged` with host `/dev` mounted, and the image has no `USER` so the process is root. Together that is a host-compromise recipe for anyone who starts the stack.
 
@@ -262,4 +291,5 @@ The operator can still point `--text` / `--device` at any path they can open. Th
 
 ```
 Total: 15 findings (0 critical, 2 high, 5 medium, 5 low, 3 informational)
+Status: all remediations applied on this branch (Trivy Dockerfile: 0 misconfigs)
 ```

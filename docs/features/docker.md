@@ -4,9 +4,9 @@ Optional container build for local runs. CI publishes images to GHCR.
 
 ## Overview
 
-`Dockerfile` is a two-stage build: `rust:1.88-bookworm` compiles a release binary, `debian:bookworm-slim` runs it. The image entrypoint is `serial-capture`. Extra compose arguments are passed through to the CLI.
+`Dockerfile` is a two-stage build: `rust:1.88-bookworm` (digest-pinned) compiles a release binary, `debian:bookworm-slim` (digest-pinned) runs it as user `capture` (uid 65532, group `dialout`). The image entrypoint is `serial-capture`. Extra compose arguments are passed through to the CLI.
 
-Host `/dev` must be visible inside the container for USB serial devices.
+Host `/dev` must be visible inside the container for USB serial devices. Compose does **not** use `--privileged`. It drops capabilities, sets `no-new-privileges`, allows USB serial cgroup majors `166` (ttyACM) and `188` (ttyUSB), and bind-mounts `/dev` plus read-only `/sys`.
 
 ## Compose
 
@@ -14,16 +14,14 @@ Host `/dev` must be visible inside the container for USB serial devices.
 
 | Service | Purpose |
 |---------|---------|
-| `app` | Privileged run with `/dev` mounted and `./logs` at `/logs`. Default command: `--text /logs/capture.txt`. |
-| `test` | Build stage image, `cargo test --all-targets` with the repo bind-mounted. |
+| `app` | Non-root run with USB cgroup rules, `/dev` and `/sys` mounted, `./logs` at `/logs`. Default command: `--all --text /logs/capture.txt`. Memory 256m, 64 PIDs. |
+| `test` | Build stage image as uid 1000, `cargo test --all-targets` with the repo bind-mounted. |
 
 ```bash
 docker compose build
-docker compose run --rm --privileged app --list
-docker compose run --rm --privileged app --device /dev/ttyUSB0 --text /logs/capture.txt
+docker compose run --rm app --list
+docker compose run --rm app --device /dev/ttyUSB0 --text /logs/capture.txt
 ```
-
-`--privileged` is required for the same USB access as the `app` service.
 
 `.env.example` lists optional compose overrides (`BAUD`, `DEVICE`). The binary reads CLI flags, not those environment variables. Pass flags on the `compose run` command line.
 
