@@ -12,6 +12,8 @@ use std::time::Duration;
 pub const READ_TIMEOUT: Duration = Duration::from_millis(100);
 pub const MAX_LINE: usize = 1_048_576;
 pub const MAX_CAPTURE_THREADS: usize = 32;
+pub const GPSD_READY_WAIT: Duration = Duration::from_secs(2);
+pub const GPSD_READY_STEP: Duration = Duration::from_millis(50);
 
 #[derive(Default)]
 pub struct LineSplitter {
@@ -68,6 +70,20 @@ fn gps_snapshot(gps: Option<&Mutex<Option<GpsPosition>>>) -> Gps {
     match gps {
         Some(slot) => Gps::On(*lock(slot)),
         None => Gps::Off,
+    }
+}
+
+pub(crate) fn wait_gpsd_ready(
+    latest: &Mutex<Option<GpsPosition>>,
+    stop: &AtomicBool,
+    sleep: impl Fn(Duration),
+    limit: Duration,
+    step: Duration,
+) {
+    let mut waited = Duration::ZERO;
+    while waited < limit && !stop.load(Ordering::Relaxed) && lock(latest).is_none() {
+        sleep(step);
+        waited += step;
     }
 }
 
@@ -161,6 +177,15 @@ pub fn run_loop<L, O, S>(
     } else {
         None
     };
+    if let Some(latest) = &gps_latest {
+        wait_gpsd_ready(
+            latest,
+            &stop,
+            sleep.clone(),
+            GPSD_READY_WAIT,
+            GPSD_READY_STEP,
+        );
+    }
     let gps_time = cfg.gpsd_time;
 
     while !stop.load(Ordering::Relaxed) {
