@@ -562,3 +562,73 @@ fn open_serial_pty_succeeds() {
         result.expect("pty slave should open as a serial port");
     }
 }
+
+fn pos() -> crate::output::GpsPosition {
+    crate::output::GpsPosition {
+        lat: 1.0,
+        lon: 2.0,
+        time: None,
+    }
+}
+
+#[test]
+fn wait_gpsd_ready_returns_immediately_with_fix() {
+    let latest = Mutex::new(Some(pos()));
+    let stop = AtomicBool::new(false);
+    wait_gpsd_ready(
+        &latest,
+        &stop,
+        thread::sleep,
+        GPSD_READY_WAIT,
+        GPSD_READY_STEP,
+    );
+    assert_eq!(*lock(&latest), Some(pos()));
+}
+
+#[test]
+fn wait_gpsd_ready_skips_when_stopped() {
+    let latest = Mutex::new(None);
+    let stop = AtomicBool::new(true);
+    wait_gpsd_ready(
+        &latest,
+        &stop,
+        thread::sleep,
+        GPSD_READY_WAIT,
+        GPSD_READY_STEP,
+    );
+    assert!(lock(&latest).is_none());
+}
+
+#[test]
+fn wait_gpsd_ready_stops_when_fix_arrives() {
+    let latest = Mutex::new(None);
+    let stop = AtomicBool::new(false);
+    wait_gpsd_ready(
+        &latest,
+        &stop,
+        |_| {
+            *lock(&latest) = Some(pos());
+        },
+        GPSD_READY_WAIT,
+        GPSD_READY_STEP,
+    );
+    assert_eq!(*lock(&latest), Some(pos()));
+}
+
+#[test]
+fn wait_gpsd_ready_times_out_without_fix() {
+    let latest = Mutex::new(None);
+    let stop = AtomicBool::new(false);
+    let sleeps = AtomicUsize::new(0);
+    wait_gpsd_ready(
+        &latest,
+        &stop,
+        |_| {
+            sleeps.fetch_add(1, Ordering::Relaxed);
+        },
+        Duration::from_millis(100),
+        Duration::from_millis(50),
+    );
+    assert_eq!(sleeps.load(Ordering::Relaxed), 2);
+    assert!(lock(&latest).is_none());
+}
