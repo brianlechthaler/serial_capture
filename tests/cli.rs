@@ -16,6 +16,8 @@ fn help_exits_zero() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Dump USB serial"));
+    assert!(stdout.contains("--gpsd"));
+    assert!(stdout.contains("--gpsd-addr"));
 }
 
 #[test]

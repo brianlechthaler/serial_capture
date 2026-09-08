@@ -21,6 +21,7 @@ On Linux, the capturing user typically needs membership in the `dialout` group. 
 - [Device discovery](docs/features/device-discovery.md)
 - [Reconnect and identity](docs/features/reconnect.md)
 - [Log formats](docs/features/log-formats.md)
+- [GPSD](docs/features/gpsd.md)
 - [Docker](docs/features/docker.md)
 
 ## Requirements

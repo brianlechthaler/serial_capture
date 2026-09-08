@@ -39,6 +39,8 @@ fn parse_all_flags() {
     assert!(cfg.list);
     assert!(!cfg.all);
     assert!(!cfg.json_nested);
+    assert!(!cfg.gpsd);
+    assert_eq!(cfg.gpsd_addr, "127.0.0.1:2947");
 }
 
 #[test]
@@ -87,6 +89,13 @@ fn parse_all_and_json_nested() {
     let cfg = Config::parse_from(["serial-capture", "--all", "--json-nested"]);
     assert!(cfg.all);
     assert!(cfg.json_nested);
+}
+
+#[test]
+fn parse_gpsd_flags() {
+    let cfg = Config::parse_from(["serial-capture", "--gpsd", "--gpsd-addr", "10.0.0.5:2947"]);
+    assert!(cfg.gpsd);
+    assert_eq!(cfg.gpsd_addr, "10.0.0.5:2947");
 }
 
 #[test]

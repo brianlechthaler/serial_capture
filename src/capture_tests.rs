@@ -64,7 +64,8 @@ fn scripted_read_returns_bytes() {
         &mut reader,
         &mut splitter,
         &outputs,
-        &stop
+        &stop,
+        None
     ));
 }
 
@@ -109,7 +110,8 @@ fn capture_reader_emits_and_reconnects_on_eof() {
         &mut reader,
         &mut splitter,
         &outputs,
-        &stop
+        &stop,
+        None
     ));
     drop(outputs);
     let body = std::fs::read_to_string(&path).unwrap();
@@ -130,7 +132,8 @@ fn capture_reader_stop_and_timeouts() {
         &mut reader,
         &mut splitter,
         &outputs,
-        &stop
+        &stop,
+        None
     ));
 
     let stop = AtomicBool::new(false);
@@ -146,7 +149,8 @@ fn capture_reader_stop_and_timeouts() {
         &mut reader,
         &mut splitter,
         &outputs,
-        &stop
+        &stop,
+        None
     ));
 }
 
@@ -314,7 +318,8 @@ fn capture_reader_empty_flush_on_stop_eof_and_error() {
         &mut Cursor::new(Vec::<u8>::new()),
         &mut splitter,
         &outputs,
-        &stop
+        &stop,
+        None
     ));
 
     let stop = AtomicBool::new(false);
@@ -323,7 +328,8 @@ fn capture_reader_empty_flush_on_stop_eof_and_error() {
         &mut Cursor::new(Vec::<u8>::new()),
         &mut splitter,
         &outputs,
-        &stop
+        &stop,
+        None
     ));
 
     let mut reader = Scripted(VecDeque::from([Err(io::Error::other("boom"))]));
@@ -332,7 +338,8 @@ fn capture_reader_empty_flush_on_stop_eof_and_error() {
         &mut reader,
         &mut splitter,
         &outputs,
-        &stop
+        &stop,
+        None
     ));
 }
 
@@ -393,7 +400,68 @@ fn emit_lines_survives_poisoned_mutex() {
         panic!("poison");
     })
     .join();
-    emit_lines("/dev/ttyUSB0", ["x".into()], &outputs);
+    emit_lines("/dev/ttyUSB0", ["x".into()], &outputs, None);
+}
+
+#[test]
+fn emit_lines_adds_gps_columns() {
+    let dir = std::env::temp_dir().join(format!("serial-capture-gps-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("out.txt");
+    let outputs = Mutex::new(
+        Outputs::open_with_json(Some(path.to_str().unwrap()), None, None, false, true).unwrap(),
+    );
+    let gps = Mutex::new(Some(crate::output::GpsPosition {
+        lat: 10.5,
+        lon: -20.25,
+    }));
+    emit_lines("/dev/ttyUSB0", ["fix".into()], &outputs, Some(&gps));
+    drop(outputs);
+    let body = std::fs::read_to_string(&path).unwrap();
+    assert!(body.contains("10.5"));
+    assert!(body.contains("-20.25"));
+    assert!(body.contains("fix"));
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn run_loop_starts_gpsd_watcher() {
+    let dir = std::env::temp_dir().join(format!("serial-capture-gpsd-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("cap.txt");
+    let outputs = Arc::new(Mutex::new(
+        Outputs::open_with_json(Some(log.to_str().unwrap()), None, None, false, true).unwrap(),
+    ));
+    let stop = Arc::new(AtomicBool::new(false));
+    let opens = Arc::new(AtomicUsize::new(0));
+    let cfg = Config {
+        gpsd: true,
+        gpsd_addr: "127.0.0.1:1".into(),
+        poll_ms: 1,
+        device: vec!["/dev/ttyUSB0".into()],
+        ..Config::default()
+    };
+    let opener_opens = opens.clone();
+    let thread_stop = stop.clone();
+    let handle = thread::spawn(move || {
+        run_loop(
+            &cfg,
+            Vec::new,
+            move |_, _| {
+                opener_opens.fetch_add(1, Ordering::Relaxed);
+                Ok(Box::new(Cursor::new(b"hello\n".to_vec())) as Box<dyn Read + Send>)
+            },
+            outputs,
+            thread_stop,
+            |_| {},
+        );
+    });
+    wait_until(&stop, || opens.load(Ordering::Relaxed) >= 1);
+    stop.store(true, Ordering::Relaxed);
+    handle.join().unwrap();
+    let body = std::fs::read_to_string(&log).unwrap();
+    assert!(body.contains("hello"));
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -440,7 +508,8 @@ fn emit_lines_ignores_write_errors() {
         &mut reader,
         &mut splitter,
         &outputs,
-        &stop
+        &stop,
+        None
     ));
 }
 

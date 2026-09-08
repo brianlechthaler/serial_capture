@@ -25,6 +25,8 @@ serial-capture [OPTIONS]
 | `--json <PATH>` | unset | Newline-delimited JSON log. `-` is stdout. |
 | `--json-nested` | off | Parse serial lines as JSON values inside `--json` `data`. Default keeps `data` as a string. |
 | `--csv <PATH>` | unset | CSV log. `-` is stdout. Formula-like fields (`=`, `+`, `-`, `@`) are prefixed with `'`. |
+| `--gpsd` | off | Add lat/lon columns from gpsd. See [GPSD](gpsd.md). |
+| `--gpsd-addr` | `127.0.0.1:2947` | gpsd TCP address. Used only with `--gpsd`. |
 | `--poll-ms <MS>` | `500` | Device scan and reconnect retry interval. Values below 50 are treated as 50. |
 | `--list` | off | Print USB serial devices and exit. Does not open ports or logs. |
 
@@ -52,8 +54,15 @@ Two explicit devices, JSON only, faster rescan:
 serial-capture -d /dev/ttyUSB0 -d /dev/ttyACM0 --json - --poll-ms 200
 ```
 
+Text to stdout with GPS coordinates:
+
+```bash
+serial-capture --all --gpsd
+```
+
 ## Related
 
 - [Getting started](../getting-started.md)
 - [Log formats](log-formats.md)
+- [GPSD](gpsd.md)
 - [Device discovery](device-discovery.md)
