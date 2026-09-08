@@ -9,6 +9,7 @@
 | `config` | Clap flags, output defaults, poll interval |
 | `device` | USB tty scan, identity, selector, path registry |
 | `capture` | Poll loop, per-device threads, line split, serial open |
+| `gpsd` | Optional gpsd TCP client; latest TPV lat/lon |
 | `output` | Text / JSON / CSV writers |
 | `mcp` | Read-only JSON-RPC stdio server for log/device tools |
 
@@ -25,6 +26,7 @@ flowchart TD
   Port --> Split[LineSplitter]
   Split --> Rec[Record]
   Rec --> Out
+  GPS[gpsd TPV] -.-> Rec
   MCP[serial-capture-mcp] --> List
   MCP --> Logs[allowlisted log dir]
 ```
@@ -32,7 +34,7 @@ flowchart TD
 ## Runtime
 
 1. Apply output defaults (`text=-` when no format is set and `--list` is off).
-2. Open log destinations (append; CSV header if the file is empty).
+2. Open log destinations (append; CSV header if the file is empty). `--gpsd` uses a GPS CSV header and starts a gpsd watcher thread.
 3. Poll for devices every `--poll-ms` (minimum 50 ms).
 4. For each selected target that does not already have a thread, spawn one keyed by USB identity (auto/`--all` mode) or by the requested path (explicit `--device`), up to 32 threads.
 5. Each thread opens the current path from the registry, reads until EOF/error/stop, emits complete lines, then retries after `poll_ms`.
@@ -44,4 +46,5 @@ Serial reads use a 100 ms timeout so the stop flag can be checked without blocki
 - [MCP](mcp.md)
 - [Reconnect and identity](features/reconnect.md)
 - [Log formats](features/log-formats.md)
+- [GPSD](features/gpsd.md)
 - [CLI](features/cli.md)

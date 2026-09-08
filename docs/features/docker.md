@@ -26,6 +26,8 @@ docker compose run --rm app --device /dev/ttyUSB0 --text /logs/capture.txt
 
 `.env.example` lists optional compose overrides (`BAUD`, `DEVICE`). The binary reads CLI flags, not those environment variables. Pass flags on the `compose run` command line.
 
+To annotate logs with gpsd on the host, pass `--gpsd` and an address the container can reach (host network, or the host gateway). See [GPSD](gpsd.md).
+
 ## Published image
 
 CI (`.github/workflows/container.yml`) builds `linux/amd64` and `linux/arm64` and pushes to `ghcr.io/<owner>/<repo>` on pushes to `main` and tags `v*`. Pull requests build but do not push.
@@ -34,4 +36,5 @@ CI (`.github/workflows/container.yml`) builds `linux/amd64` and `linux/arm64` an
 
 - [Getting started](../getting-started.md)
 - [CLI](cli.md)
+- [GPSD](gpsd.md)
 - [MCP](../mcp.md)

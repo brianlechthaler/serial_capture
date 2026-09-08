@@ -6,6 +6,14 @@ fn rec() -> Record {
         ts: DateTime::from_timestamp(1_700_000_000, 123_000_000).unwrap(),
         device: "/dev/ttyUSB0".into(),
         data: "hello".into(),
+        gps: Gps::Off,
+    }
+}
+
+fn rec_gps(pos: Option<GpsPosition>) -> Record {
+    Record {
+        gps: Gps::On(pos),
+        ..rec()
     }
 }
 
@@ -88,7 +96,7 @@ fn emit_json_nested_parses_objects() {
     fs::create_dir_all(&dir).unwrap();
     let json = dir.join("j.json");
     let mut outputs =
-        Outputs::open_with_json(None, Some(json.to_str().unwrap()), None, true).unwrap();
+        Outputs::open_with_json(None, Some(json.to_str().unwrap()), None, true, false).unwrap();
     outputs
         .emit(&Record {
             data: r#"{"k":1}"#.into(),
@@ -120,6 +128,51 @@ fn record_new_sets_fields() {
     let record = Record::new("/dev/ttyUSB1", "ping");
     assert_eq!(record.device, "/dev/ttyUSB1");
     assert_eq!(record.data, "ping");
+    assert_eq!(record.gps, Gps::Off);
+}
+
+#[test]
+fn formats_gps_columns_when_enabled() {
+    let record = rec_gps(Some(GpsPosition {
+        lat: 37.5,
+        lon: -122.25,
+    }));
+    assert_eq!(
+        format_text(&record),
+        "2023-11-14T22:13:20.123Z\t/dev/ttyUSB0\t37.5\t-122.25\thello"
+    );
+    let value: serde_json::Value = serde_json::from_str(&format_json(&record)).unwrap();
+    assert_eq!(value["lat"], 37.5);
+    assert_eq!(value["lon"], -122.25);
+    let nested: serde_json::Value = serde_json::from_str(&format_json_nested(&record)).unwrap();
+    assert_eq!(nested["lat"], 37.5);
+    assert_eq!(
+        format_csv(&record),
+        "2023-11-14T22:13:20.123Z,/dev/ttyUSB0,37.5,-122.25,hello"
+    );
+}
+
+#[test]
+fn formats_empty_gps_columns_without_fix() {
+    let record = rec_gps(None);
+    assert_eq!(
+        format_text(&record),
+        "2023-11-14T22:13:20.123Z\t/dev/ttyUSB0\t\t\thello"
+    );
+    let value: serde_json::Value = serde_json::from_str(&format_json(&record)).unwrap();
+    assert_eq!(value["lat"], serde_json::Value::Null);
+    assert_eq!(value["lon"], serde_json::Value::Null);
+    assert_eq!(
+        format_csv(&record),
+        "2023-11-14T22:13:20.123Z,/dev/ttyUSB0,,,hello"
+    );
+}
+
+#[test]
+fn json_without_gps_omits_lat_lon() {
+    let value: serde_json::Value = serde_json::from_str(&format_json(&rec())).unwrap();
+    assert!(value.get("lat").is_none());
+    assert!(value.get("lon").is_none());
 }
 
 #[test]
@@ -144,6 +197,7 @@ fn emit_writes_all_formats_and_csv_header() {
     assert!(text_body.contains("hello"));
     assert!(json_body.contains("\"data\":\"hello\""));
     assert!(csv_body.starts_with("ts,device,data\n"));
+    assert!(!csv_body.contains("lat,lon"));
     assert!(csv_body.contains("hello"));
     fs::remove_dir_all(&dir).ok();
 }
@@ -206,4 +260,25 @@ fn emit_reports_write_errors() {
 fn csv_stdout_header() {
     let mut outputs = Outputs::open(None, None, Some("-")).unwrap();
     outputs.emit(&rec()).unwrap();
+}
+
+#[test]
+fn csv_gps_header_and_row() {
+    let dir = std::env::temp_dir().join(format!("serial-capture-csv-gps-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let csv = dir.join("g.csv");
+    let mut outputs =
+        Outputs::open_with_json(None, None, Some(csv.to_str().unwrap()), false, true).unwrap();
+    outputs
+        .emit(&rec_gps(Some(GpsPosition {
+            lat: 1.25,
+            lon: 2.5,
+        })))
+        .unwrap();
+    drop(outputs);
+    let body = fs::read_to_string(&csv).unwrap();
+    assert!(body.starts_with("ts,device,lat,lon,data\n"));
+    assert!(body.contains("1.25,2.5,hello"));
+    fs::remove_dir_all(&dir).ok();
 }

@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::device::{targets, Device, Registry, Selector};
-use crate::output::{Outputs, Record};
+use crate::gpsd;
+use crate::output::{Gps, GpsPosition, Outputs, Record};
 use std::collections::HashSet;
 use std::io::{self, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -63,13 +64,22 @@ pub(crate) fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(|err| err.into_inner())
 }
 
+fn gps_snapshot(gps: Option<&Mutex<Option<GpsPosition>>>) -> Gps {
+    match gps {
+        Some(slot) => Gps::On(*lock(slot)),
+        None => Gps::Off,
+    }
+}
+
 pub(crate) fn emit_lines(
     path: &str,
     lines: impl IntoIterator<Item = String>,
     outputs: &Mutex<Outputs>,
+    gps: Option<&Mutex<Option<GpsPosition>>>,
 ) {
+    let gps = gps_snapshot(gps);
     for data in lines {
-        let record = Record::new(path, data);
+        let record = Record::with_gps(path, data, gps);
         let _ = lock(outputs).emit(&record);
     }
 }
@@ -80,23 +90,24 @@ pub fn capture_reader(
     splitter: &mut LineSplitter,
     outputs: &Mutex<Outputs>,
     stop: &AtomicBool,
+    gps: Option<&Mutex<Option<GpsPosition>>>,
 ) -> bool {
     let mut buf = [0u8; 4096];
     loop {
         if stop.load(Ordering::Relaxed) {
             if let Some(line) = splitter.flush() {
-                emit_lines(path, [line], outputs);
+                emit_lines(path, [line], outputs, gps);
             }
             return true;
         }
         match reader.read(&mut buf) {
             Ok(0) => {
                 if let Some(line) = splitter.flush() {
-                    emit_lines(path, [line], outputs);
+                    emit_lines(path, [line], outputs, gps);
                 }
                 return false;
             }
-            Ok(n) => emit_lines(path, splitter.push(&buf[..n]), outputs),
+            Ok(n) => emit_lines(path, splitter.push(&buf[..n]), outputs, gps),
             Err(err)
                 if err.kind() == io::ErrorKind::TimedOut
                     || err.kind() == io::ErrorKind::WouldBlock =>
@@ -105,7 +116,7 @@ pub fn capture_reader(
             }
             Err(_) => {
                 if let Some(line) = splitter.flush() {
-                    emit_lines(path, [line], outputs);
+                    emit_lines(path, [line], outputs, gps);
                 }
                 return false;
             }
@@ -132,6 +143,19 @@ pub fn run_loop<L, O, S>(
     let mut handles = Vec::new();
     let poll = cfg.poll_duration();
     let baud = cfg.baud;
+    let gps_latest = if cfg.gpsd {
+        let latest = Arc::new(Mutex::new(None));
+        let thread_latest = latest.clone();
+        let thread_stop = stop.clone();
+        let thread_sleep = sleep.clone();
+        let addr = cfg.gpsd_addr.clone();
+        handles.push(thread::spawn(move || {
+            gpsd::watch(&addr, &thread_latest, &thread_stop, thread_sleep, poll);
+        }));
+        Some(latest)
+    } else {
+        None
+    };
 
     while !stop.load(Ordering::Relaxed) {
         let discovered = lister();
@@ -149,6 +173,7 @@ pub fn run_loop<L, O, S>(
                 let stop_thread = stop.clone();
                 let sleep_thread = sleep.clone();
                 let registry = registry.clone();
+                let gps = gps_latest.clone();
                 let key = target.key;
                 handles.push(thread::spawn(move || {
                     let mut splitter = LineSplitter::default();
@@ -162,6 +187,7 @@ pub fn run_loop<L, O, S>(
                                     &mut splitter,
                                     &outputs,
                                     &stop_thread,
+                                    gps.as_deref(),
                                 ) {
                                     break;
                                 }

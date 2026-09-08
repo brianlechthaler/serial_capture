@@ -9,12 +9,15 @@ use std::thread;
 pub mod capture;
 pub mod config;
 pub mod device;
+pub mod gpsd;
 pub mod mcp;
 pub mod output;
 
 pub use config::Config;
 pub use device::Device;
-pub use output::{csv_cell, format_csv, format_json, format_json_nested, format_text, Record};
+pub use output::{
+    csv_cell, format_csv, format_json, format_json_nested, format_text, Gps, GpsPosition, Record,
+};
 
 pub type AppResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -36,6 +39,7 @@ pub fn run_with(cfg: Config, stop: Arc<AtomicBool>) -> AppResult<()> {
         cfg.json.as_deref(),
         cfg.csv.as_deref(),
         cfg.json_nested,
+        cfg.gpsd,
     )?;
     run_loop(
         &cfg,

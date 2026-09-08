@@ -35,6 +35,14 @@ pub struct Config {
     #[arg(long)]
     pub json_nested: bool,
 
+    /// Add lat/lon columns from gpsd
+    #[arg(long)]
+    pub gpsd: bool,
+
+    /// gpsd host:port
+    #[arg(long, default_value = "127.0.0.1:2947")]
+    pub gpsd_addr: String,
+
     /// How often to scan for devices, in milliseconds
     #[arg(long, default_value_t = 500)]
     pub poll_ms: u64,
@@ -54,6 +62,8 @@ impl Default for Config {
             json: None,
             csv: None,
             json_nested: false,
+            gpsd: false,
+            gpsd_addr: "127.0.0.1:2947".into(),
             poll_ms: 500,
             list: false,
         }
