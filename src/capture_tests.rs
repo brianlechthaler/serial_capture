@@ -575,34 +575,28 @@ fn pos() -> crate::output::GpsPosition {
 fn wait_gpsd_ready_returns_immediately_with_fix() {
     let latest = Mutex::new(Some(pos()));
     let stop = AtomicBool::new(false);
-    let sleeps = AtomicUsize::new(0);
     wait_gpsd_ready(
         &latest,
         &stop,
-        |_| {
-            sleeps.fetch_add(1, Ordering::Relaxed);
-        },
+        thread::sleep,
         GPSD_READY_WAIT,
         GPSD_READY_STEP,
     );
-    assert_eq!(sleeps.load(Ordering::Relaxed), 0);
+    assert_eq!(*lock(&latest), Some(pos()));
 }
 
 #[test]
 fn wait_gpsd_ready_skips_when_stopped() {
     let latest = Mutex::new(None);
     let stop = AtomicBool::new(true);
-    let sleeps = AtomicUsize::new(0);
     wait_gpsd_ready(
         &latest,
         &stop,
-        |_| {
-            sleeps.fetch_add(1, Ordering::Relaxed);
-        },
+        thread::sleep,
         GPSD_READY_WAIT,
         GPSD_READY_STEP,
     );
-    assert_eq!(sleeps.load(Ordering::Relaxed), 0);
+    assert!(lock(&latest).is_none());
 }
 
 #[test]
