@@ -34,7 +34,7 @@ flowchart TD
 ## Runtime
 
 1. Apply output defaults (`text=-` when no format is set and `--list` is off).
-2. Open log destinations (append; CSV header if the file is empty). `--gpsd` uses a GPS CSV header and starts a gpsd watcher thread.
+2. Open log destinations (append; CSV header if the file is empty). `--gpsd` uses a GPS CSV header and starts a gpsd watcher thread. `--gpsd-time` stamps records from TPV `time` when available.
 3. Poll for devices every `--poll-ms` (minimum 50 ms).
 4. For each selected target that does not already have a thread, spawn one keyed by USB identity (auto/`--all` mode) or by the requested path (explicit `--device`), up to 32 threads.
 5. Each thread opens the current path from the registry, reads until EOF/error/stop, emits complete lines, then retries after `poll_ms`.

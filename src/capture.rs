@@ -76,10 +76,14 @@ pub(crate) fn emit_lines(
     lines: impl IntoIterator<Item = String>,
     outputs: &Mutex<Outputs>,
     gps: Option<&Mutex<Option<GpsPosition>>>,
+    gps_time: bool,
 ) {
     let gps = gps_snapshot(gps);
     for data in lines {
-        let record = Record::with_gps(path, data, gps);
+        let mut record = Record::with_gps(path, data, gps);
+        if gps_time {
+            record.apply_gps_time();
+        }
         let _ = lock(outputs).emit(&record);
     }
 }
@@ -91,23 +95,24 @@ pub fn capture_reader(
     outputs: &Mutex<Outputs>,
     stop: &AtomicBool,
     gps: Option<&Mutex<Option<GpsPosition>>>,
+    gps_time: bool,
 ) -> bool {
     let mut buf = [0u8; 4096];
     loop {
         if stop.load(Ordering::Relaxed) {
             if let Some(line) = splitter.flush() {
-                emit_lines(path, [line], outputs, gps);
+                emit_lines(path, [line], outputs, gps, gps_time);
             }
             return true;
         }
         match reader.read(&mut buf) {
             Ok(0) => {
                 if let Some(line) = splitter.flush() {
-                    emit_lines(path, [line], outputs, gps);
+                    emit_lines(path, [line], outputs, gps, gps_time);
                 }
                 return false;
             }
-            Ok(n) => emit_lines(path, splitter.push(&buf[..n]), outputs, gps),
+            Ok(n) => emit_lines(path, splitter.push(&buf[..n]), outputs, gps, gps_time),
             Err(err)
                 if err.kind() == io::ErrorKind::TimedOut
                     || err.kind() == io::ErrorKind::WouldBlock =>
@@ -116,7 +121,7 @@ pub fn capture_reader(
             }
             Err(_) => {
                 if let Some(line) = splitter.flush() {
-                    emit_lines(path, [line], outputs, gps);
+                    emit_lines(path, [line], outputs, gps, gps_time);
                 }
                 return false;
             }
@@ -156,6 +161,7 @@ pub fn run_loop<L, O, S>(
     } else {
         None
     };
+    let gps_time = cfg.gpsd_time;
 
     while !stop.load(Ordering::Relaxed) {
         let discovered = lister();
@@ -188,6 +194,7 @@ pub fn run_loop<L, O, S>(
                                     &outputs,
                                     &stop_thread,
                                     gps.as_deref(),
+                                    gps_time,
                                 ) {
                                     break;
                                 }

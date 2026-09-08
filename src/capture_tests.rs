@@ -65,7 +65,8 @@ fn scripted_read_returns_bytes() {
         &mut splitter,
         &outputs,
         &stop,
-        None
+        None,
+        false
     ));
 }
 
@@ -111,7 +112,8 @@ fn capture_reader_emits_and_reconnects_on_eof() {
         &mut splitter,
         &outputs,
         &stop,
-        None
+        None,
+        false
     ));
     drop(outputs);
     let body = std::fs::read_to_string(&path).unwrap();
@@ -133,7 +135,8 @@ fn capture_reader_stop_and_timeouts() {
         &mut splitter,
         &outputs,
         &stop,
-        None
+        None,
+        false
     ));
 
     let stop = AtomicBool::new(false);
@@ -150,7 +153,8 @@ fn capture_reader_stop_and_timeouts() {
         &mut splitter,
         &outputs,
         &stop,
-        None
+        None,
+        false
     ));
 }
 
@@ -319,7 +323,8 @@ fn capture_reader_empty_flush_on_stop_eof_and_error() {
         &mut splitter,
         &outputs,
         &stop,
-        None
+        None,
+        false
     ));
 
     let stop = AtomicBool::new(false);
@@ -329,7 +334,8 @@ fn capture_reader_empty_flush_on_stop_eof_and_error() {
         &mut splitter,
         &outputs,
         &stop,
-        None
+        None,
+        false
     ));
 
     let mut reader = Scripted(VecDeque::from([Err(io::Error::other("boom"))]));
@@ -339,7 +345,8 @@ fn capture_reader_empty_flush_on_stop_eof_and_error() {
         &mut splitter,
         &outputs,
         &stop,
-        None
+        None,
+        false
     ));
 }
 
@@ -400,7 +407,7 @@ fn emit_lines_survives_poisoned_mutex() {
         panic!("poison");
     })
     .join();
-    emit_lines("/dev/ttyUSB0", ["x".into()], &outputs, None);
+    emit_lines("/dev/ttyUSB0", ["x".into()], &outputs, None, false);
 }
 
 #[test]
@@ -414,13 +421,35 @@ fn emit_lines_adds_gps_columns() {
     let gps = Mutex::new(Some(crate::output::GpsPosition {
         lat: 10.5,
         lon: -20.25,
+        time: None,
     }));
-    emit_lines("/dev/ttyUSB0", ["fix".into()], &outputs, Some(&gps));
+    emit_lines("/dev/ttyUSB0", ["fix".into()], &outputs, Some(&gps), false);
     drop(outputs);
     let body = std::fs::read_to_string(&path).unwrap();
     assert!(body.contains("10.5"));
     assert!(body.contains("-20.25"));
     assert!(body.contains("fix"));
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn emit_lines_uses_gps_time_when_enabled() {
+    let dir = std::env::temp_dir().join(format!("serial-capture-gps-time-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("out.txt");
+    let outputs = Mutex::new(
+        Outputs::open_with_json(Some(path.to_str().unwrap()), None, None, false, true).unwrap(),
+    );
+    let ts = chrono::DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+    let gps = Mutex::new(Some(crate::output::GpsPosition {
+        lat: 1.0,
+        lon: 2.0,
+        time: Some(ts),
+    }));
+    emit_lines("/dev/ttyUSB0", ["tick".into()], &outputs, Some(&gps), true);
+    drop(outputs);
+    let body = std::fs::read_to_string(&path).unwrap();
+    assert!(body.contains("2023-11-14T22:13:20.000Z"));
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -436,6 +465,7 @@ fn run_loop_starts_gpsd_watcher() {
     let opens = Arc::new(AtomicUsize::new(0));
     let cfg = Config {
         gpsd: true,
+        gpsd_time: true,
         gpsd_addr: "127.0.0.1:1".into(),
         poll_ms: 1,
         device: vec!["/dev/ttyUSB0".into()],
@@ -509,7 +539,8 @@ fn emit_lines_ignores_write_errors() {
         &mut splitter,
         &outputs,
         &stop,
-        None
+        None,
+        false
     ));
 }
 

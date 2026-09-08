@@ -1,4 +1,5 @@
 use crate::output::GpsPosition;
+use chrono::{DateTime, Utc};
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,7 +17,14 @@ pub fn parse_tpv(line: &str) -> Option<GpsPosition> {
     Some(GpsPosition {
         lat: value.get("lat").and_then(serde_json::Value::as_f64)?,
         lon: value.get("lon").and_then(serde_json::Value::as_f64)?,
+        time: parse_tpv_time(&value),
     })
+}
+
+fn parse_tpv_time(value: &serde_json::Value) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(value.get("time")?.as_str()?)
+        .ok()
+        .map(|dt| dt.with_timezone(&Utc))
 }
 
 pub fn watch(

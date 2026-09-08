@@ -27,6 +27,7 @@ serial-capture [OPTIONS]
 | `--csv <PATH>` | unset | CSV log. `-` is stdout. Formula-like fields (`=`, `+`, `-`, `@`) are prefixed with `'`. |
 | `--gpsd` | off | Add lat/lon columns from gpsd. See [GPSD](gpsd.md). |
 | `--gpsd-addr` | `127.0.0.1:2947` | gpsd TCP address. Used only with `--gpsd`. |
+| `--gpsd-time` | off | Use gpsd TPV time for `ts`. Requires `--gpsd`. |
 | `--poll-ms <MS>` | `500` | Device scan and reconnect retry interval. Values below 50 are treated as 50. |
 | `--list` | off | Print USB serial devices and exit. Does not open ports or logs. |
 
@@ -58,6 +59,7 @@ Text to stdout with GPS coordinates:
 
 ```bash
 serial-capture --all --gpsd
+serial-capture --all --gpsd --gpsd-time
 ```
 
 ## Related

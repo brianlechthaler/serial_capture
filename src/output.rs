@@ -9,6 +9,7 @@ use std::os::unix::fs::OpenOptionsExt;
 pub struct GpsPosition {
     pub lat: f64,
     pub lon: f64,
+    pub time: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,6 +37,14 @@ impl Record {
             device: device.into(),
             data: data.into(),
             gps,
+        }
+    }
+
+    pub fn apply_gps_time(&mut self) {
+        if let Gps::On(Some(pos)) = self.gps {
+            if let Some(ts) = pos.time {
+                self.ts = ts;
+            }
         }
     }
 }

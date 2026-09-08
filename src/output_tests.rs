@@ -136,6 +136,7 @@ fn formats_gps_columns_when_enabled() {
     let record = rec_gps(Some(GpsPosition {
         lat: 37.5,
         lon: -122.25,
+        time: None,
     }));
     assert_eq!(
         format_text(&record),
@@ -173,6 +174,40 @@ fn json_without_gps_omits_lat_lon() {
     let value: serde_json::Value = serde_json::from_str(&format_json(&rec())).unwrap();
     assert!(value.get("lat").is_none());
     assert!(value.get("lon").is_none());
+}
+
+#[test]
+fn apply_gps_time_overrides_host_clock() {
+    let ts = DateTime::from_timestamp(1_700_000_000, 123_000_000).unwrap();
+    let mut record = rec_gps(Some(GpsPosition {
+        lat: 1.0,
+        lon: 2.0,
+        time: Some(ts),
+    }));
+    record.ts = DateTime::from_timestamp(0, 0).unwrap();
+    record.apply_gps_time();
+    assert_eq!(record.ts, ts);
+}
+
+#[test]
+fn apply_gps_time_keeps_host_clock_without_fix_time() {
+    let host = DateTime::from_timestamp(0, 0).unwrap();
+    let mut record = rec_gps(Some(GpsPosition {
+        lat: 1.0,
+        lon: 2.0,
+        time: None,
+    }));
+    record.ts = host;
+    record.apply_gps_time();
+    assert_eq!(record.ts, host);
+    let mut off = rec();
+    off.ts = host;
+    off.apply_gps_time();
+    assert_eq!(off.ts, host);
+    let mut missing = rec_gps(None);
+    missing.ts = host;
+    missing.apply_gps_time();
+    assert_eq!(missing.ts, host);
 }
 
 #[test]
@@ -274,6 +309,7 @@ fn csv_gps_header_and_row() {
         .emit(&rec_gps(Some(GpsPosition {
             lat: 1.25,
             lon: 2.5,
+            time: None,
         })))
         .unwrap();
     drop(outputs);
