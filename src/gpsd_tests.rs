@@ -54,7 +54,13 @@ fn watch_stores_tpv_and_stops() {
     let addr = addr.to_string();
     thread::scope(|scope| {
         scope.spawn(|| {
-            watch(&addr, &latest, &stop, |_| {}, Duration::from_millis(50));
+            watch(
+                &addr,
+                &latest,
+                &stop,
+                thread::sleep,
+                Duration::from_millis(50),
+            );
         });
         let start = Instant::now();
         while latest.lock().unwrap().is_none() {
@@ -123,7 +129,13 @@ fn watch_reconnects_after_eof() {
     let addr = addr.to_string();
     thread::scope(|scope| {
         scope.spawn(|| {
-            watch(&addr, &latest, &stop, |_| {}, Duration::from_millis(10));
+            watch(
+                &addr,
+                &latest,
+                &stop,
+                thread::sleep,
+                Duration::from_millis(10),
+            );
         });
         let start = Instant::now();
         while *connects.lock().unwrap() < 2 {
@@ -166,7 +178,13 @@ fn watch_times_out_until_stop() {
     let addr = addr.to_string();
     thread::scope(|scope| {
         scope.spawn(|| {
-            watch(&addr, &latest, &stop, |_| {}, Duration::from_millis(50));
+            watch(
+                &addr,
+                &latest,
+                &stop,
+                thread::sleep,
+                Duration::from_millis(50),
+            );
         });
         thread::sleep(Duration::from_millis(150));
         stop.store(true, Ordering::Relaxed);
