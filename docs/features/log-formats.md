@@ -6,7 +6,7 @@ Write captured lines as text, JSON, and/or CSV. Any combination can be enabled a
 
 Each complete line becomes a `Record`: UTC timestamp (RFC 3339 with milliseconds), device path at emit time, and line text. Destinations are opened once at startup. Files use create + append so reconnects do not truncate previous output.
 
-With `--gpsd`, text/JSON/CSV also include `lat` and `lon` from the latest gpsd TPV. See [GPSD](gpsd.md).
+With `--gpsd`, text/JSON/CSV also include `lat` and `lon` from the latest gpsd TPV. `--gpsd-time` writes TPV `time` into `ts` when present. See [GPSD](gpsd.md).
 
 Use `-` as a path to write that format to stdout. Multiple formats to stdout interleave on the same stream.
 

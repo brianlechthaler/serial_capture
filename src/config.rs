@@ -43,6 +43,10 @@ pub struct Config {
     #[arg(long, default_value = "127.0.0.1:2947")]
     pub gpsd_addr: String,
 
+    /// Use gpsd TPV time for log timestamps
+    #[arg(long, requires = "gpsd")]
+    pub gpsd_time: bool,
+
     /// How often to scan for devices, in milliseconds
     #[arg(long, default_value_t = 500)]
     pub poll_ms: u64,
@@ -64,6 +68,7 @@ impl Default for Config {
             json_nested: false,
             gpsd: false,
             gpsd_addr: "127.0.0.1:2947".into(),
+            gpsd_time: false,
             poll_ms: 500,
             list: false,
         }

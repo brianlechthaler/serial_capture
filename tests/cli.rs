@@ -18,6 +18,7 @@ fn help_exits_zero() {
     assert!(stdout.contains("Dump USB serial"));
     assert!(stdout.contains("--gpsd"));
     assert!(stdout.contains("--gpsd-addr"));
+    assert!(stdout.contains("--gpsd-time"));
 }
 
 #[test]

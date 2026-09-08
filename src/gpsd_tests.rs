@@ -1,4 +1,5 @@
 use super::*;
+use chrono::{DateTime, Utc};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::atomic::AtomicBool;
@@ -11,6 +12,7 @@ fn parse_tpv_reads_lat_lon() {
     let pos = parse_tpv(r#"{"class":"TPV","mode":3,"lat":37.5,"lon":-122.25}"#).unwrap();
     assert_eq!(pos.lat, 37.5);
     assert_eq!(pos.lon, -122.25);
+    assert!(pos.time.is_none());
 }
 
 #[test]
@@ -18,6 +20,26 @@ fn parse_tpv_accepts_integer_coords() {
     let pos = parse_tpv(r#"{"class":"TPV","lat":37,"lon":-122}"#).unwrap();
     assert_eq!(pos.lat, 37.0);
     assert_eq!(pos.lon, -122.0);
+}
+
+#[test]
+fn parse_tpv_reads_rfc3339_time() {
+    let pos = parse_tpv(r#"{"class":"TPV","lat":1.0,"lon":2.0,"time":"2023-11-14T22:13:20.123Z"}"#)
+        .unwrap();
+    assert_eq!(
+        pos.time,
+        Some(
+            DateTime::parse_from_rfc3339("2023-11-14T22:13:20.123Z")
+                .unwrap()
+                .with_timezone(&Utc)
+        )
+    );
+}
+
+#[test]
+fn parse_tpv_ignores_bad_time() {
+    let pos = parse_tpv(r#"{"class":"TPV","lat":1.0,"lon":2.0,"time":"not-a-time"}"#).unwrap();
+    assert!(pos.time.is_none());
 }
 
 #[test]
@@ -73,7 +95,8 @@ fn watch_stores_tpv_and_stops() {
         *latest.lock().unwrap(),
         Some(GpsPosition {
             lat: 1.5,
-            lon: 2.25
+            lon: 2.25,
+            time: None,
         })
     );
     let _ = server.join();
@@ -152,7 +175,11 @@ fn watch_reconnects_after_eof() {
 
 #[test]
 fn lock_recovers_poisoned_mutex() {
-    let mutex = Mutex::new(Some(GpsPosition { lat: 1.0, lon: 2.0 }));
+    let mutex = Mutex::new(Some(GpsPosition {
+        lat: 1.0,
+        lon: 2.0,
+        time: None,
+    }));
     let poisoned = Arc::new(mutex);
     let clone = poisoned.clone();
     let _ = thread::spawn(move || {

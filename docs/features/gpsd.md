@@ -8,12 +8,13 @@ Optional lat/lon columns from a local [gpsd](https://gpsd.gitlab.io/gpsd/) daemo
 
 Without `--gpsd`, log shape is unchanged: no `lat`/`lon` fields.
 
-Timestamps still come from the host clock. GPS time is not used here.
+Timestamps come from the host clock unless `--gpsd-time` is also set. `--gpsd-time` requires `--gpsd`. When a TPV includes RFC 3339 `time`, that value is written as `ts`. If there is no fix time yet, the host clock is used.
 
 ## Usage
 
 ```bash
 serial-capture --all --gpsd
+serial-capture --all --gpsd --gpsd-time
 serial-capture --device /dev/ttyUSB0 --gpsd --gpsd-addr 127.0.0.1:2947 \
   --text capture.txt --json capture.json --csv capture.csv
 ```
@@ -53,6 +54,7 @@ Negative longitudes are written as numbers in CSV (no leading `'`). Missing fixe
 |--------|---------|-------------|
 | `--gpsd` | off | Connect to gpsd and add lat/lon columns. |
 | `--gpsd-addr` | `127.0.0.1:2947` | gpsd TCP `host:port`. |
+| `--gpsd-time` | off | Use TPV `time` for log timestamps. Requires `--gpsd`. Falls back to the host clock when no GPS time is available. |
 
 The client sends `?WATCH={"enable":true,"json":true}` and keeps the last TPV that includes both `lat` and `lon`. Disconnects retry every `--poll-ms` (minimum 50 ms).
 
@@ -61,6 +63,7 @@ The client sends `?WATCH={"enable":true,"json":true}` and keeps the last TPV tha
 | Symptom | Cause |
 |---------|--------|
 | Columns present but empty/`null` | No TPV yet, gpsd not running, or TPV without lat/lon (no fix). |
+| `ts` still looks like host time with `--gpsd-time` | TPV has no parseable `time` yet; host clock is the fallback. |
 | Connection retries, no coords | `--gpsd-addr` unreachable; default is loopback TCP 2947. |
 | Docker never gets a fix | Container `127.0.0.1` is not the host gpsd. |
 
