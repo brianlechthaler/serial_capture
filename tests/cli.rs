@@ -19,6 +19,8 @@ fn help_exits_zero() {
     assert!(stdout.contains("--gpsd"));
     assert!(stdout.contains("--gpsd-addr"));
     assert!(stdout.contains("--gpsd-time"));
+    assert!(stdout.contains("--dtr"));
+    assert!(stdout.contains("--json-nested"));
 }
 
 #[test]

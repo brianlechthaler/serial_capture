@@ -42,6 +42,13 @@ fn parse_all_flags() {
     assert!(!cfg.gpsd);
     assert_eq!(cfg.gpsd_addr, "127.0.0.1:2947");
     assert!(!cfg.gpsd_time);
+    assert!(!cfg.dtr);
+}
+
+#[test]
+fn parse_dtr_flag() {
+    let cfg = Config::parse_from(["serial-capture", "--dtr"]);
+    assert!(cfg.dtr);
 }
 
 #[test]

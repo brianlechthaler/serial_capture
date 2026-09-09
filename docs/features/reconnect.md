@@ -43,8 +43,8 @@ sequenceDiagram
 ## Capture thread behavior
 
 1. Resolve the current path for the target key.
-2. Open at `--baud` with a 100 ms read timeout.
-3. Split on `\n`, strip a trailing `\r`, decode as UTF-8 lossy.
+2. Open at `--baud` with a 100 ms read timeout. RTS is set before DTR. Both are deasserted unless `--dtr` is set. Clearing only DTR would reset ESP32 USB-JTAG.
+3. Split on `\n`, strip a trailing `\r`, decode as UTF-8 lossy. Empty lines are dropped. Complete JSON objects or arrays glued on one line become separate records; truncated fragments and non-JSON text stay as-is.
 4. On timeout, keep reading. On EOF or other error, flush a partial line and retry.
 5. On stop, flush a partial line and exit the thread.
 

@@ -65,6 +65,10 @@ serial-capture \
 
 `--device` can be repeated. Use `--all` (no `--device`) to capture every matching port, including ones that appear later.
 
+ESP32 USB-JTAG (`/dev/ttyACM*`) resets when RTS is asserted and DTR is deasserted. `serial-capture` deasserts RTS then DTR on open. Pass `--dtr` only when the device should reset on open (typical Arduino auto-reset).
+
+JSON event streams (one object per line) can use `--json - --json-nested`. Glued objects on one line are split; empty lines are dropped.
+
 ## Development
 
 ```bash

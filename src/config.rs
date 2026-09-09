@@ -54,6 +54,10 @@ pub struct Config {
     /// List USB serial devices and exit
     #[arg(long)]
     pub list: bool,
+
+    /// Assert DTR and RTS on open. Default deasserts RTS then DTR so ESP32 USB-JTAG does not reset.
+    #[arg(long)]
+    pub dtr: bool,
 }
 
 impl Default for Config {
@@ -71,6 +75,7 @@ impl Default for Config {
             gpsd_time: false,
             poll_ms: 500,
             list: false,
+            dtr: false,
         }
     }
 }

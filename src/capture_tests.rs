@@ -98,6 +98,83 @@ fn splitter_handles_lines_and_flush() {
 }
 
 #[test]
+fn expand_line_skips_empty_and_whitespace() {
+    assert!(expand_line("").is_empty());
+    assert!(expand_line(" \t ").is_empty());
+}
+
+#[test]
+fn expand_line_keeps_plain_text_and_panic_dumps() {
+    assert_eq!(expand_line("LED on"), vec!["LED on".to_string()]);
+    let backtrace = "Backtrace: 0x4205C808:0x3FC9F450 0x4037CC2F:0x3FC9F480";
+    assert_eq!(expand_line(backtrace), vec![backtrace.to_string()]);
+}
+
+#[test]
+fn expand_line_splits_glued_json_objects() {
+    assert_eq!(
+        expand_line(r#"{"event":"a"}{"event":"b"}"#),
+        vec![
+            r#"{"event":"a"}"#.to_string(),
+            r#"{"event":"b"}"#.to_string()
+        ]
+    );
+}
+
+#[test]
+fn expand_line_recovers_json_after_truncated_prefix() {
+    assert_eq!(
+        expand_line(r#"{"event":"wifi_ap","r{"event":"wifi_ap","ssid":"x"}"#),
+        vec![
+            r#"{"event":"wifi_ap","r"#.to_string(),
+            r#"{"event":"wifi_ap","ssid":"x"}"#.to_string()
+        ]
+    );
+}
+
+#[test]
+fn expand_line_keeps_truncated_suffix_after_complete_json() {
+    assert_eq!(
+        expand_line(r#"{"event":"a"}{"event":"b""#),
+        vec![
+            r#"{"event":"a"}"#.to_string(),
+            r#"{"event":"b""#.to_string()
+        ]
+    );
+}
+
+#[test]
+fn expand_line_keeps_single_json_and_truncated_only() {
+    assert_eq!(
+        expand_line(r#"{"event":"a"}"#),
+        vec![r#"{"event":"a"}"#.to_string()]
+    );
+    assert_eq!(
+        expand_line(r#"{"event":"wifi_ap","r"#),
+        vec![r#"{"event":"wifi_ap","r"#.to_string()]
+    );
+}
+
+#[test]
+fn expand_line_splits_glued_json_arrays() {
+    assert_eq!(
+        expand_line("[1][2]"),
+        vec!["[1]".to_string(), "[2]".to_string()]
+    );
+}
+
+#[test]
+fn expand_line_skips_space_between_json_values() {
+    assert_eq!(
+        expand_line(r#"{"event":"a"} {"event":"b"}"#),
+        vec![
+            r#"{"event":"a"}"#.to_string(),
+            r#"{"event":"b"}"#.to_string()
+        ]
+    );
+}
+
+#[test]
 fn capture_reader_emits_and_reconnects_on_eof() {
     let dir = std::env::temp_dir().join(format!("serial-capture-read-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -186,7 +263,7 @@ fn run_loop_reconnects_and_discovers() {
                     vec![Device::from_path("/dev/ttyUSB0")]
                 }
             },
-            move |_, _| {
+            move |_, _, _| {
                 opener_opens.fetch_add(1, Ordering::Relaxed);
                 Ok(Box::new(Cursor::new(b"hello\n".to_vec())) as Box<dyn Read + Send>)
             },
@@ -254,7 +331,7 @@ fn run_loop_specified_device_remaps_path() {
             },
             {
                 let seen = seen.clone();
-                move |path, _| {
+                move |path, _, _| {
                     *seen.lock().unwrap() = path.to_string();
                     Ok(Box::new(Cursor::new(b"x\n".to_vec())) as Box<dyn Read + Send>)
                 }
@@ -285,6 +362,7 @@ fn run_loop_retries_open_errors() {
     let cfg = Config {
         device: vec!["/dev/ttyUSB0".into()],
         poll_ms: 1,
+        dtr: true,
         ..Config::default()
     };
     let opener_opens = opens.clone();
@@ -293,7 +371,8 @@ fn run_loop_retries_open_errors() {
         run_loop(
             &cfg,
             Vec::new,
-            move |_, _| {
+            move |_, _, dtr| {
+                assert!(dtr);
                 opener_opens.fetch_add(1, Ordering::Relaxed);
                 Err(io::Error::other("missing"))
             },
@@ -309,7 +388,39 @@ fn run_loop_retries_open_errors() {
 
 #[test]
 fn open_serial_missing_path_fails() {
-    assert!(open_serial("/dev/ttyUSB-does-not-exist-xyz", 115200).is_err());
+    assert!(open_serial("/dev/ttyUSB-does-not-exist-xyz", 115200, false).is_err());
+    assert!(open_serial("/dev/ttyUSB-does-not-exist-xyz", 115200, true).is_err());
+}
+
+#[test]
+fn emit_lines_skips_empty_and_splits_glued_json() {
+    let dir = std::env::temp_dir().join(format!("serial-capture-expand-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("out.json");
+    let outputs = Mutex::new(
+        Outputs::open_with_json(None, Some(path.to_str().unwrap()), None, true, false).unwrap(),
+    );
+    emit_lines(
+        "/dev/ttyACM0",
+        [
+            String::new(),
+            "   ".into(),
+            r#"{"event":"a"}{"event":"b"}"#.into(),
+        ],
+        &outputs,
+        None,
+        false,
+    );
+    drop(outputs);
+    let body = std::fs::read_to_string(&path).unwrap();
+    let rows: Vec<serde_json::Value> = body
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0]["data"]["event"], "a");
+    assert_eq!(rows[1]["data"]["event"], "b");
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
@@ -382,7 +493,7 @@ fn run_loop_caps_capture_threads() {
                     .map(|i| Device::from_path(format!("/dev/ttyUSB{i}")))
                     .collect()
             },
-            move |path, _| {
+            move |path, _, _| {
                 opener_seen.lock().unwrap().insert(path.to_string());
                 Err(io::Error::other("missing"))
             },
@@ -477,7 +588,7 @@ fn run_loop_starts_gpsd_watcher() {
         run_loop(
             &cfg,
             Vec::new,
-            move |_, _| {
+            move |_, _, _| {
                 opener_opens.fetch_add(1, Ordering::Relaxed);
                 Ok(Box::new(Cursor::new(b"hello\n".to_vec())) as Box<dyn Read + Send>)
             },
@@ -512,7 +623,7 @@ fn run_loop_skips_duplicate_keys() {
             Vec::new,
             {
                 let opens = opens.clone();
-                move |_, _| {
+                move |_, _, _| {
                     opens.fetch_add(1, Ordering::Relaxed);
                     Err(io::Error::other("missing"))
                 }
@@ -557,9 +668,10 @@ fn open_serial_pty_succeeds() {
         let name = std::ffi::CStr::from_ptr(buf.as_ptr().cast())
             .to_string_lossy()
             .into_owned();
-        let result = open_serial(&name, 115200);
+        open_serial(&name, 115200, false).expect("pty slave should open with DTR off");
+        let on = open_serial(&name, 115200, true);
         libc::close(master);
-        result.expect("pty slave should open as a serial port");
+        on.expect("pty slave should open with DTR on");
     }
 }
 
