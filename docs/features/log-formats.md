@@ -30,6 +30,8 @@ One JSON object per line:
 
 If the line is valid JSON **and** `--json-nested` is set, `data` is that value (object, array, number, and so on). Otherwise `data` is a JSON string.
 
+Empty and whitespace-only lines are dropped. If one newline-delimited line contains more than one JSON object or array, each complete value becomes its own record. A truncated fragment before or after those values is kept as a string. Espressif panic dumps and other non-JSON text stay strings.
+
 ```json
 {"data":{"event":"config","beep_mask":31},"device":"/dev/ttyUSB0","ts":"2023-11-14T22:13:20.123Z"}
 ```
@@ -61,7 +63,7 @@ Each emit flushes the writer so lines show up immediately.
 |---------|--------|
 | Process exits immediately with a path error | Parent directory of a log file does not exist. |
 | CSV has two header rows | Unlikely unless the previous file ended empty or was truncated to zero. Header is written only for empty/new files and stdout. |
-| JSON `data` is a string, not an object | The serial line was not valid JSON, or `--json-nested` was omitted. |
+| JSON `data` is a string, not an object | The serial line was not valid JSON, or `--json-nested` was omitted. Truncated objects and panic dumps stay strings. |
 
 ## Related
 

@@ -54,12 +54,57 @@ impl LineSplitter {
     }
 }
 
-pub fn open_serial(path: &str, baud: u32) -> io::Result<Box<dyn Read + Send>> {
-    serialport::new(path, baud)
+pub(crate) fn expand_line(line: &str) -> Vec<String> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let bytes = trimmed.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    let mut leftover_start = 0;
+    while i < bytes.len() {
+        if bytes[i] != b'{' && bytes[i] != b'[' {
+            i += 1;
+            continue;
+        }
+        let mut stream =
+            serde_json::Deserializer::from_str(&trimmed[i..]).into_iter::<serde_json::Value>();
+        match stream.next() {
+            Some(Ok(_)) => {
+                let n = stream.byte_offset();
+                let prefix = trimmed[leftover_start..i].trim();
+                if !prefix.is_empty() {
+                    out.push(prefix.to_string());
+                }
+                out.push(trimmed[i..i + n].to_string());
+                i += n;
+                leftover_start = i;
+            }
+            _ => i += 1,
+        }
+    }
+    let suffix = trimmed[leftover_start..].trim();
+    if out.is_empty() {
+        vec![line.to_string()]
+    } else if suffix.is_empty() {
+        out
+    } else {
+        out.push(suffix.to_string());
+        out
+    }
+}
+
+pub fn open_serial(path: &str, baud: u32, dtr: bool) -> io::Result<Box<dyn Read + Send>> {
+    let mut port = serialport::new(path, baud)
         .timeout(READ_TIMEOUT)
+        .preserve_dtr_on_open()
         .open()
-        .map(|port| Box::new(port) as Box<dyn Read + Send>)
-        .map_err(|err| io::Error::other(err.to_string()))
+        .map_err(|err| io::Error::other(err.to_string()))?;
+    // ESP32 USB-JTAG: RTS=1 DTR=0 resets the chip. Set RTS before DTR.
+    let _ = port.write_request_to_send(dtr);
+    let _ = port.write_data_terminal_ready(dtr);
+    Ok(Box::new(port) as Box<dyn Read + Send>)
 }
 
 pub(crate) fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -96,11 +141,13 @@ pub(crate) fn emit_lines(
 ) {
     let gps = gps_snapshot(gps);
     for data in lines {
-        let mut record = Record::with_gps(path, data, gps);
-        if gps_time {
-            record.apply_gps_time();
+        for data in expand_line(&data) {
+            let mut record = Record::with_gps(path, data, gps);
+            if gps_time {
+                record.apply_gps_time();
+            }
+            let _ = lock(outputs).emit(&record);
         }
-        let _ = lock(outputs).emit(&record);
     }
 }
 
@@ -154,7 +201,7 @@ pub fn run_loop<L, O, S>(
     sleep: S,
 ) where
     L: Fn() -> Vec<Device> + Send + Sync + 'static,
-    O: Fn(&str, u32) -> io::Result<Box<dyn Read + Send>> + Send + Sync + 'static,
+    O: Fn(&str, u32, bool) -> io::Result<Box<dyn Read + Send>> + Send + Sync + 'static,
     S: Fn(Duration) + Clone + Send + Sync + 'static,
 {
     let selector = Selector::from_devices(&cfg.device);
@@ -164,6 +211,7 @@ pub fn run_loop<L, O, S>(
     let mut handles = Vec::new();
     let poll = cfg.poll_duration();
     let baud = cfg.baud;
+    let dtr = cfg.dtr;
     let gps_latest = if cfg.gpsd {
         let latest = Arc::new(Mutex::new(None));
         let thread_latest = latest.clone();
@@ -210,7 +258,7 @@ pub fn run_loop<L, O, S>(
                     let mut splitter = LineSplitter::default();
                     while !stop_thread.load(Ordering::Relaxed) {
                         let path = lock(&registry).resolve(&key);
-                        match opener(&path, baud) {
+                        match opener(&path, baud, dtr) {
                             Ok(mut reader) => {
                                 if capture_reader(
                                     &path,

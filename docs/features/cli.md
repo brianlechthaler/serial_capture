@@ -23,13 +23,14 @@ serial-capture [OPTIONS]
 | `-b`, `--baud <RATE>` | `115200` | Serial baud rate. |
 | `--text <PATH>` | `-` if no format is set | Newline-delimited text log. `-` is stdout. |
 | `--json <PATH>` | unset | Newline-delimited JSON log. `-` is stdout. |
-| `--json-nested` | off | Parse serial lines as JSON values inside `--json` `data`. Default keeps `data` as a string. |
+| `--json-nested` | off | Parse serial lines as JSON values inside `--json` `data`. Default keeps `data` as a string. Glued `{...}{...}` lines are split into separate records. Empty lines are dropped. |
 | `--csv <PATH>` | unset | CSV log. `-` is stdout. Formula-like fields (`=`, `+`, `-`, `@`) are prefixed with `'`. |
 | `--gpsd` | off | Add lat/lon columns from gpsd. See [GPSD](gpsd.md). |
 | `--gpsd-addr` | `127.0.0.1:2947` | gpsd TCP address. Used only with `--gpsd`. |
 | `--gpsd-time` | off | Use gpsd TPV time for `ts`. Requires `--gpsd`. |
 | `--poll-ms <MS>` | `500` | Device scan and reconnect retry interval. Values below 50 are treated as 50. |
 | `--list` | off | Print USB serial devices and exit. Does not open ports or logs. |
+| `--dtr` | off | Assert DTR and RTS when opening the port. Default deasserts RTS then DTR so ESP32 USB-JTAG does not reset (`RTS=1 DTR=0` is a chip reset). |
 
 If `--list` is off, pass `--device` (repeatable) or `--all`. Omitting both is an error. `--all` captures every matching USB serial port, including ones that appear later, up to 32 concurrent devices.
 
@@ -53,6 +54,12 @@ Two explicit devices, JSON only, faster rescan:
 
 ```bash
 serial-capture -d /dev/ttyUSB0 -d /dev/ttyACM0 --json - --poll-ms 200
+```
+
+ESP32 JSON events without resetting USB-JTAG:
+
+```bash
+serial-capture -d /dev/ttyACM0 --json - --json-nested
 ```
 
 Text to stdout with GPS coordinates:
